@@ -215,7 +215,10 @@ export default function PreorderPage() {
       const data = await res.json();
       if (res.ok) {
         setOtpSent(true);
-        setOtpSuccess('Verification code sent to your email.');
+        const successMsg = data.devHint 
+          ? `Verification code sent. ${data.devHint}`
+          : 'Verification code sent to your email.';
+        setOtpSuccess(successMsg);
       } else {
         setOtpError(data.error || 'Failed to send OTP.');
       }
@@ -526,6 +529,12 @@ export default function PreorderPage() {
                 </button>
               </div>
 
+              {otpError && (
+                <p className={styles.errorMessage} style={{ marginTop: '5px' }}>
+                  ⚠ {otpError}
+                </p>
+              )}
+
               {otpSent && !emailVerified && (
                 <div className={styles.otpContainer}>
                   <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#5d4037' }}>
@@ -552,7 +561,6 @@ export default function PreorderPage() {
                       {otpLoading ? 'Verifying...' : 'Submit OTP'}
                     </button>
                   </div>
-                  {errorMsg && <p className={styles.errorMessage}>{otpError}</p>}
                 </div>
               )}
 
