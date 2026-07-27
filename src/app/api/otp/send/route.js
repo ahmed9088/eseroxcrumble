@@ -1,25 +1,14 @@
-import { sendPhoneOTP } from '../../../../lib/otpService';
+import { resend } from '../../../../lib/resend';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { phone } = await request.json();
+    const { email } = await request.json();
 
-    if (!phone) {
+    if (!email || !email.includes('@')) {
       return NextResponse.json(
-        { error: 'Please enter a valid mobile or WhatsApp number.' },
-        { status: 400 }
-      );
-    }
-
-    // Clean phone number (keep only digits)
-    const cleanPhone = phone.replace(/\D/g, '');
-
-    // Validate length (typical phone numbers are 10 to 15 digits)
-    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
-      return NextResponse.json(
-        { error: 'Please enter a valid mobile or WhatsApp number with 10-15 digits.' },
+        { error: 'Please enter a valid email address.' },
         { status: 400 }
       );
     }
@@ -28,52 +17,67 @@ export async function POST(request) {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiration
 
-    // Delete any old OTPs for this phone to prevent database bloat
+    // Delete any old OTPs for this email to prevent bloat
     await supabaseAdmin
-      .from('phone_verifications')
+      .from('email_verifications')
       .delete()
-      .eq('phone', cleanPhone);
+      .eq('email', email);
 
     // Save new verification code
     const { error: dbError } = await supabaseAdmin
-      .from('phone_verifications')
+      .from('email_verifications')
       .insert({
-        phone: cleanPhone,
+        email,
         code,
         expires_at: expiresAt.toISOString(),
         verified: false,
       });
 
     if (dbError) {
-      console.error('Database error saving phone OTP:', dbError);
+      console.error('Database error saving OTP:', dbError);
       return NextResponse.json(
         { error: 'Failed to generate verification code. Please try again.' },
         { status: 500 }
       );
     }
 
-    // Send OTP using the OTP service (console sandbox by default, or WhatsApp/SMS if keys are configured)
-    const sendResult = await sendPhoneOTP(phone, code);
+    // Send email using Resend
+    const { data: emailData, error: emailError } = await resend.emails.send({
+      from: 'Cafe Esero <noreply@resend.dev>', // Resend default domain for sandbox
+      to: email,
+      subject: '🔑 Your Verification Code - Cafe Esero Preorder',
+      html: `
+        <div style="font-family: Arial, sans-serif; background-color: #faf6f0; padding: 40px; text-align: center; border-radius: 12px; color: #4a2c11; max-width: 600px; margin: 0 auto; border: 1px solid #e6d3c0;">
+          <h2 style="color: #6d4c41; margin-bottom: 5px; font-size: 24px; letter-spacing: 0.5px;">Cafe Esero × Crumble Cookie</h2>
+          <p style="color: #8d6e63; font-style: italic; margin-top: 0; margin-bottom: 25px;">Pre-booking Reservation Verification</p>
+          
+          <div style="background-color: #ffffff; border-radius: 8px; padding: 30px; box-shadow: 0 4px 6px rgba(109,76,65,0.05); border: 1px solid #f0e2d5; display: inline-block; width: 80%;">
+            <p style="margin-top: 0; font-size: 16px; color: #4e342e;">Your 6-digit email verification code is:</p>
+            <h1 style="font-size: 42px; font-weight: bold; letter-spacing: 6px; color: #3e2723; margin: 15px 0; background: #efebe9; padding: 10px; border-radius: 6px; display: inline-block;">${code}</h1>
+            <p style="font-size: 14px; color: #8d6e63; margin-bottom: 0;">This code is temporary and will expire in <strong>10 minutes</strong>.</p>
+          </div>
+          
+          <p style="font-size: 12px; color: #a1887f; margin-top: 30px; line-height: 1.5;">
+            If you did not initiate this request, please ignore this email.<br/>
+            &copy; 2026 Cafe Esero. All rights reserved.
+          </p>
+        </div>
+      `,
+    });
 
-    if (!sendResult.success) {
+    if (emailError) {
+      console.error('Email sending error:', emailError);
       return NextResponse.json(
-        { error: sendResult.error || 'Failed to send verification code. Please try again.' },
+        { error: 'Failed to send verification email. Please check the email address or try again.' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Verification code sent successfully.',
-      // In development sandbox mode, output a devHint to make testing easy
-      ...(process.env.NODE_ENV !== 'production' && sendResult.provider === 'sandbox'
-        ? { devHint: `[Sandbox Mode] OTP code is: ${code} (also printed in terminal console)` }
-        : {})
-    });
+    return NextResponse.json({ success: true, message: 'OTP sent successfully.' });
   } catch (error) {
     console.error('OTP Send route error:', error);
     return NextResponse.json(
-      { error: 'An unexpected error occurred while sending OTP.' },
+      { error: 'An unexpected error occurred.' },
       { status: 500 }
     );
   }

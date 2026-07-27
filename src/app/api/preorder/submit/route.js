@@ -53,21 +53,18 @@ export async function POST(request) {
       );
     }
 
-    // 2. Phone verification check
-    // Clean phone number for database lookup
-    const cleanPhone = phone.replace(/\D/g, '');
-
-    // Query if this phone number was verified in the phone_verifications table
+    // 2. Email verification check
+    // Query if this email was verified in the email_verifications table
     const { data: verification, error: verifyError } = await supabaseAdmin
-      .from('phone_verifications')
+      .from('email_verifications')
       .select('*')
-      .eq('phone', cleanPhone)
+      .eq('email', email)
       .eq('verified', true)
       .limit(1);
 
     if (verifyError || !verification || verification.length === 0) {
       return NextResponse.json(
-        { error: 'Mobile / WhatsApp number verification is required. Please verify your number first.' },
+        { error: 'Email verification is required. Please verify your email first.' },
         { status: 400 }
       );
     }
@@ -167,9 +164,9 @@ export async function POST(request) {
 
     // 6. Delete the OTP verification row now that the preorder is successfully submitted
     await supabaseAdmin
-      .from('phone_verifications')
+      .from('email_verifications')
       .delete()
-      .eq('phone', cleanPhone);
+      .eq('email', email);
 
     // 7. Send "Order Received" confirmation email to user
     const orderId = orderData.id;

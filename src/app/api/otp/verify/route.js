@@ -3,31 +3,28 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { phone, code } = await request.json();
+    const { email, code } = await request.json();
 
-    if (!phone || !code) {
+    if (!email || !code) {
       return NextResponse.json(
-        { error: 'Mobile/WhatsApp number and verification code are required.' },
+        { error: 'Email and verification code are required.' },
         { status: 400 }
       );
     }
 
-    // Clean phone number (keep only digits)
-    const cleanPhone = phone.replace(/\D/g, '');
-
     // Lookup code in database
     const { data: verifications, error: dbError } = await supabaseAdmin
-      .from('phone_verifications')
+      .from('email_verifications')
       .select('*')
-      .eq('phone', cleanPhone)
+      .eq('email', email)
       .eq('code', code)
       .order('created_at', { ascending: false })
       .limit(1);
 
     if (dbError) {
-      console.error('Database query error on phone OTP verify:', dbError);
+      console.error('Database query error on OTP verify:', dbError);
       return NextResponse.json(
-        { error: 'Verification failed due to database error.' },
+        { error: 'Verification failed. Database error.' },
         { status: 500 }
       );
     }
@@ -52,23 +49,23 @@ export async function POST(request) {
 
     // Mark as verified
     const { error: updateError } = await supabaseAdmin
-      .from('phone_verifications')
+      .from('email_verifications')
       .update({ verified: true })
       .eq('id', verification.id);
 
     if (updateError) {
-      console.error('Error marking phone as verified:', updateError);
+      console.error('Error marking code as verified:', updateError);
       return NextResponse.json(
         { error: 'Failed to complete verification. Please try again.' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, message: 'Phone number verified successfully.' });
+    return NextResponse.json({ success: true, message: 'Email verified successfully.' });
   } catch (error) {
     console.error('OTP Verify route error:', error);
     return NextResponse.json(
-      { error: 'An unexpected error occurred during verification.' },
+      { error: 'An unexpected error occurred.' },
       { status: 500 }
     );
   }

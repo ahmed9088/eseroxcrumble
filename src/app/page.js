@@ -81,9 +81,9 @@ export default function PreorderPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Phone Verification States
+  // Email Verification States
   const [otpSent, setOtpSent] = useState(false);
-  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState('');
@@ -197,10 +197,10 @@ export default function PreorderPage() {
 
   const totalItems = Object.values(quantities).reduce((a, b) => a + b, 0);
 
-  // Phone Verification Trigger
+  // Email Verification Trigger
   const sendVerificationCode = async () => {
-    if (!phone || phone.replace(/\D/g, '').length < 10) {
-      setOtpError('Please enter a valid mobile / WhatsApp number first.');
+    if (!email || !email.includes('@')) {
+      setOtpError('Please enter a valid email address.');
       return;
     }
     setOtpLoading(true);
@@ -210,16 +210,12 @@ export default function PreorderPage() {
       const res = await fetch('/api/otp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (res.ok) {
         setOtpSent(true);
-        // Show sandbox hint if present in non-production
-        const successMsg = data.devHint 
-          ? `Verification code sent. ${data.devHint}`
-          : 'Verification code sent to your mobile / WhatsApp number.';
-        setOtpSuccess(successMsg);
+        setOtpSuccess('Verification code sent to your email.');
       } else {
         setOtpError(data.error || 'Failed to send OTP.');
       }
@@ -243,12 +239,12 @@ export default function PreorderPage() {
       const res = await fetch('/api/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code: otpCode }),
+        body: JSON.stringify({ email, code: otpCode }),
       });
       const data = await res.json();
       if (res.ok) {
-        setPhoneVerified(true);
-        setOtpSuccess('Phone number verified successfully! Form unlocked.');
+        setEmailVerified(true);
+        setOtpSuccess('Email verified successfully! Form unlocked.');
       } else {
         setOtpError(data.error || 'Invalid verification code.');
       }
@@ -326,8 +322,8 @@ export default function PreorderPage() {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!phoneVerified) {
-      setErrorMsg('Please verify your Mobile / WhatsApp number first.');
+    if (!emailVerified) {
+      setErrorMsg('Please verify your email address first.');
       return;
     }
 
@@ -489,36 +485,51 @@ export default function PreorderPage() {
               <label className={styles.label}>
                 Mobile / WhatsApp Number<span className={styles.required}>*</span>
               </label>
-              <div className={styles.emailInputContainer}>
-                <input
-                  type="text"
-                  required
-                  disabled={phoneVerified}
-                  value={phone}
-                  onChange={handlePhoneChange}
-                  placeholder="(000) 000-00000"
-                  className={styles.input}
-                  style={{ flex: 1 }}
-                  id="phone"
-                />
-                <button
-                  type="button"
-                  disabled={phoneVerified || otpLoading || phone.replace(/\D/g, '').length < 10}
-                  onClick={sendVerificationCode}
-                  className={styles.verifyBtn}
-                  id="verify-phone-btn"
-                >
-                  {otpLoading && !otpSent ? 'Sending...' : 'Verify Number'}
-                </button>
-              </div>
+              <input
+                type="text"
+                required
+                value={phone}
+                onChange={handlePhoneChange}
+                placeholder="(000) 000-00000"
+                className={styles.input}
+                id="phone"
+              />
               <p style={{ margin: '3px 0 0 0', fontSize: '0.75rem', color: '#8d6e63' }}>
                 Format: (000) 000-00000.
               </p>
+            </div>
 
-              {otpSent && !phoneVerified && (
+            <div className={styles.group}>
+              <label className={styles.label}>
+                Email Address<span className={styles.required}>*</span>
+              </label>
+              <div className={styles.emailInputContainer}>
+                <input
+                  type="email"
+                  required
+                  disabled={emailVerified}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  className={styles.input}
+                  style={{ flex: 1 }}
+                  id="email"
+                />
+                <button
+                  type="button"
+                  disabled={emailVerified || otpLoading || !email.includes('@')}
+                  onClick={sendVerificationCode}
+                  className={styles.verifyBtn}
+                  id="verify-email-btn"
+                >
+                  {otpLoading && !otpSent ? 'Sending...' : 'Verify'}
+                </button>
+              </div>
+
+              {otpSent && !emailVerified && (
                 <div className={styles.otpContainer}>
                   <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#5d4037' }}>
-                    Enter the 6-digit OTP code sent to your WhatsApp/Phone:
+                    Enter the 6-digit OTP code sent to your email:
                   </p>
                   <div className={styles.otpRow}>
                     <input
@@ -541,33 +552,18 @@ export default function PreorderPage() {
                       {otpLoading ? 'Verifying...' : 'Submit OTP'}
                     </button>
                   </div>
-                  {otpError && <p className={styles.errorMessage}>{otpError}</p>}
+                  {errorMsg && <p className={styles.errorMessage}>{otpError}</p>}
                 </div>
               )}
 
-              {phoneVerified && (
+              {emailVerified && (
                 <div className={styles.otpSuccessMessage}>
-                  <span>✓</span> Phone number verified successfully. Form unlocked.
+                  <span>✓</span> Email verified successfully. Form unlocked.
                 </div>
               )}
-              {otpSuccess && !phoneVerified && (
+              {otpSuccess && !emailVerified && (
                 <p style={{ fontSize: '0.8rem', color: '#2e7d32', margin: '5px 0 0 0' }}>{otpSuccess}</p>
               )}
-            </div>
-
-            <div className={styles.group}>
-              <label className={styles.label}>
-                Email Address<span className={styles.required}>*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                className={styles.input}
-                id="email"
-              />
             </div>
           </div>
 
@@ -1173,7 +1169,7 @@ export default function PreorderPage() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading || !phoneVerified || totalItems === 0 || !paymentProof}
+            disabled={loading || !emailVerified || totalItems === 0 || !paymentProof}
             className={styles.submitBtn}
             id="place-preorder-btn"
           >
