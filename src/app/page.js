@@ -419,6 +419,55 @@ export default function PreorderPage() {
               <span className={styles.refLabel}>Preorder Reference Code</span>
               <span className={styles.refVal}>{successOrderId.substring(0, 8).toUpperCase()}</span>
             </div>
+            
+            {/* Instagram Delivery & Pickup Timings Box */}
+            <div style={{ 
+              backgroundColor: '#fdf0f5', 
+              border: '1px solid #f8bbd0', 
+              borderRadius: '12px', 
+              padding: '20px', 
+              margin: '25px 0', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              gap: '10px',
+              boxShadow: '0 2px 8px rgba(216, 27, 96, 0.04)'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>📸</span>
+              <p style={{ margin: 0, fontSize: '0.95rem', color: '#880e4f', textAlign: 'center', fontWeight: '600', lineHeight: '1.4' }}>
+                Please visit our Instagram for delivery or pickup timings:
+              </p>
+              <a 
+                href="https://www.instagram.com/esero.pk/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  background: 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)', 
+                  color: '#ffffff', 
+                  padding: '10px 20px', 
+                  borderRadius: '24px', 
+                  fontSize: '0.9rem', 
+                  fontWeight: 'bold', 
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 10px rgba(220, 39, 67, 0.25)',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.04)';
+                  e.currentTarget.style.boxShadow = '0 6px 15px rgba(220, 39, 67, 0.35)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.boxShadow = '0 4px 10px rgba(220, 39, 67, 0.25)';
+                }}
+              >
+                Visit @esero.pk
+              </a>
+            </div>
+
             <p style={{ fontSize: '0.9rem', color: '#8d6e63', marginBottom: '30px' }}>
               We will verify your bank transfer screenshot and email you a status update within a few hours.
             </p>
