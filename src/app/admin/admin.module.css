@@ -1,0 +1,517 @@
+/* C:\Users\AHMED SAFFAR\.gemini\antigravity-ide\scratch\esero-cookie-preorder\src\app\admin\admin.module.css */
+
+.container {
+  min-height: 100vh;
+  background-color: #0f0b08;
+  color: #f7ece1;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 30px;
+}
+
+.inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Login Gate Styling */
+.loginContainer {
+  min-height: 80vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.loginCard {
+  background: rgba(30, 20, 15, 0.6);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(200, 162, 122, 0.15);
+  border-radius: 16px;
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+  animation: scaleUp 0.5s ease;
+}
+
+.loginTitle {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #c8a27a;
+  margin: 0 0 10px 0;
+}
+
+.loginText {
+  font-size: 0.9rem;
+  color: #a1887f;
+  margin: 0 0 25px 0;
+}
+
+/* Dashboard Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(200, 162, 122, 0.15);
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+}
+
+.title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #c8a27a;
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 0.9rem;
+  color: #a1887f;
+  margin-top: 5px;
+}
+
+.logoutBtn {
+  padding: 8px 16px;
+  background-color: transparent;
+  color: #e57373;
+  border: 1.5px solid #e57373;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logoutBtn:hover {
+  background-color: rgba(229, 115, 115, 0.1);
+}
+
+/* Stats Row */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+@media (max-width: 900px) {
+  .statsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statCard {
+  background: rgba(30, 20, 15, 0.5);
+  border: 1px solid rgba(200, 162, 122, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #a1887f;
+  font-weight: 700;
+  display: block;
+}
+
+.statValue {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #f7ece1;
+  margin: 10px 0 0 0;
+}
+
+/* Stock Toggle Area */
+.stockCard {
+  background: rgba(30, 20, 15, 0.5);
+  border: 1px solid rgba(200, 162, 122, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 30px;
+}
+
+.stockHeader {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #c8a27a;
+  margin: 0 0 15px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stockGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 15px;
+}
+
+.stockItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.03);
+  padding: 10px 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(200, 162, 122, 0.05);
+}
+
+.stockName {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Switch styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 22px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #55443c;
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 4px;
+  bottom: 4px;
+  background-color: #fff;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+.switch input:checked + .slider {
+  background-color: #2e7d32;
+}
+
+.switch input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+/* Filters & Actions Area */
+.filterRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+  .filterRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.searchContainer {
+  flex: 1;
+}
+
+.filterGroup {
+  display: flex;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .filterGroup {
+    flex-direction: column;
+  }
+}
+
+.exportBtn {
+  padding: 12px 20px;
+  background-color: #c8a27a;
+  color: #0f0b08;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.exportBtn:hover {
+  background-color: #f7ece1;
+}
+
+/* Table Card */
+.tableContainer {
+  background: rgba(30, 20, 15, 0.4);
+  border: 1px solid rgba(200, 162, 122, 0.1);
+  border-radius: 12px;
+  overflow-x: auto;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.table th {
+  background-color: rgba(200, 162, 122, 0.08);
+  color: #c8a27a;
+  font-weight: 700;
+  padding: 15px 20px;
+  border-bottom: 1.5px solid rgba(200, 162, 122, 0.15);
+}
+
+.table td {
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(200, 162, 122, 0.05);
+}
+
+.table tr:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Status Badges */
+.badgeStatus {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 50px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.statusPending {
+  background-color: rgba(251, 192, 45, 0.15);
+  color: #fbc02d;
+}
+
+.statusApproved {
+  background-color: rgba(46, 125, 50, 0.15);
+  color: #81c784;
+}
+
+.statusRejected {
+  background-color: rgba(198, 40, 40, 0.15);
+  color: #e57373;
+}
+
+.statusPreparing {
+  background-color: rgba(2, 136, 209, 0.15);
+  color: #29b6f6;
+}
+
+.statusCompleted {
+  background-color: rgba(46, 125, 50, 0.2);
+  color: #a5d6a7;
+}
+
+/* Detail Drawer/Modal */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(5px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modalContent {
+  background-color: #1e140f;
+  border: 1.5px solid rgba(200, 162, 122, 0.25);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+  animation: scaleUp 0.3s ease;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  border-bottom: 1px solid rgba(200, 162, 122, 0.15);
+}
+
+.modalBody {
+  padding: 25px;
+}
+
+.modalGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 25px;
+}
+
+@media (max-width: 768px) {
+  .modalGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.infoSection {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(200, 162, 122, 0.08);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.infoSection h4 {
+  color: #c8a27a;
+  margin: 0 0 15px 0;
+  font-size: 1rem;
+  border-bottom: 1.5px solid rgba(200, 162, 122, 0.1);
+  padding-bottom: 8px;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+}
+
+.detailRow:last-child {
+  margin-bottom: 0;
+}
+
+.detailLabel {
+  color: #a1887f;
+}
+
+.detailValue {
+  font-weight: 600;
+  text-align: right;
+}
+
+.proofContainer {
+  text-align: center;
+}
+
+.proofImg {
+  max-width: 100%;
+  max-height: 250px;
+  border-radius: 8px;
+  cursor: zoom-in;
+  border: 1px solid rgba(200, 162, 122, 0.15);
+  object-fit: contain;
+}
+
+.actionBlock {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(200, 162, 122, 0.15);
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+}
+
+.actionBtn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btnApprove {
+  background-color: #2e7d32;
+  color: white;
+}
+
+.btnApprove:hover {
+  background-color: #388e3c;
+}
+
+.btnDecline {
+  background-color: #c62828;
+  color: white;
+}
+
+.btnDecline:hover {
+  background-color: #d32f2f;
+}
+
+.btnClose {
+  background-color: transparent;
+  color: #a1887f;
+  border: 1px solid #55443c;
+}
+
+.btnClose:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Zoom Modal */
+.zoomOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0,0,0,0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+  cursor: zoom-out;
+}
+
+.zoomImg {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+}
+
+/* Animations */
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
