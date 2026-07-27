@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from './admin.module.css';
 
 export default function AdminPage() {
@@ -12,6 +12,7 @@ export default function AdminPage() {
   // Dashboard Data
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const lastRequestTime = useRef(0);
   const [stock, setStock] = useState({
     classic_chocolate_chip: true,
     double_chocolate: true,
@@ -54,7 +55,10 @@ export default function AdminPage() {
 
   // Fetch orders and stock
   const loadDashboardData = async () => {
+    const requestId = Date.now();
+    lastRequestTime.current = requestId;
     setOrdersLoading(true);
+
     try {
       // Fetch orders with current filters
       const qParams = new URLSearchParams();
@@ -64,20 +68,22 @@ export default function AdminPage() {
 
       const ordRes = await fetch(`/api/admin/orders?${qParams.toString()}`);
       const ordData = await ordRes.json();
-      if (ordData.orders) {
+      if (requestId === lastRequestTime.current && ordData.orders) {
         setOrders(ordData.orders);
       }
 
       // Fetch stock status
       const stkRes = await fetch('/api/admin/stock');
       const stkData = await stkRes.json();
-      if (stkData.stock) {
+      if (requestId === lastRequestTime.current && stkData.stock) {
         setStock(stkData.stock);
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     } finally {
-      setOrdersLoading(false);
+      if (requestId === lastRequestTime.current) {
+        setOrdersLoading(false);
+      }
     }
   };
 

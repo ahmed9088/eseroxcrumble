@@ -42,17 +42,17 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Failed to fetch orders.' }, { status: 500 });
     }
 
-    // Client-side text search (simplest for PostgreSQL queries combined with multi-columns)
+    // Client-side text search (safely handles null/missing fields)
     let filteredOrders = orders;
     if (search) {
       const term = search.toLowerCase();
       filteredOrders = orders.filter(
         (o) =>
-          o.first_name.toLowerCase().includes(term) ||
-          o.last_name.toLowerCase().includes(term) ||
-          o.email.toLowerCase().includes(term) ||
-          o.phone.includes(term) ||
-          o.id.toLowerCase().includes(term)
+          (o.first_name || '').toLowerCase().includes(term) ||
+          (o.last_name || '').toLowerCase().includes(term) ||
+          (o.email || '').toLowerCase().includes(term) ||
+          (o.phone || '').includes(term) ||
+          (o.id || '').toLowerCase().includes(term)
       );
     }
 
