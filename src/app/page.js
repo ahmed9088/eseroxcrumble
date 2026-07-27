@@ -35,7 +35,7 @@ export default function PreorderPage() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [orderType, setOrderType] = useState('dine_in'); // 'dine_in', 'takeaway', 'delivery'
+  const [orderType, setOrderType] = useState('takeaway'); // Default to takeaway
 
   // Delivery Address
   const [deliveryStreet, setDeliveryStreet] = useState('');
@@ -188,7 +188,7 @@ export default function PreorderPage() {
   };
 
   const getDeliveryFee = () => {
-    return orderType === 'delivery' ? 250 : 0; // Flat delivery fee
+    return orderType === 'delivery' ? 300 : 0; // Flat delivery fee (PKR 300)
   };
 
   const getTotal = () => {
@@ -631,12 +631,14 @@ export default function PreorderPage() {
             </h2>
             <div className={styles.typeContainer}>
               <div
-                className={`${styles.typeCard} ${orderType === 'dine_in' ? styles.typeCardActive : ''}`}
-                onClick={() => setOrderType('dine_in')}
+                className={styles.typeCard}
+                style={{ opacity: 0.6, cursor: 'not-allowed', borderColor: '#e0d0c0', backgroundColor: '#faf6f0' }}
+                title="Dine-in preorders can only be placed at the cafe counter."
                 id="type-dine-in"
               >
                 <span className={styles.typeIcon}>☕</span>
-                <span className={styles.typeName}>Dine-in</span>
+                <span className={styles.typeName} style={{ textDecoration: 'line-through', color: '#8d6e63' }}>Dine-in</span>
+                <span style={{ fontSize: '0.65rem', color: '#c2185b', fontWeight: 'bold', marginTop: '3px' }}>Counter Only</span>
               </div>
               <div
                 className={`${styles.typeCard} ${orderType === 'takeaway' ? styles.typeCardActive : ''}`}
@@ -655,6 +657,10 @@ export default function PreorderPage() {
                 <span className={styles.typeName}>Delivery</span>
               </div>
             </div>
+
+            <p style={{ margin: '12px 0 0 0', fontSize: '0.8rem', color: '#8d6e63', fontStyle: 'italic' }}>
+              ℹ Dine-in orders can only be placed directly at the cafe counter. Online preorders are restricted to Takeaway and Delivery (standard delivery fee is PKR 300).
+            </p>
 
             {orderType === 'delivery' && (
               <div style={{ marginTop: '25px', animation: 'slideDown 0.4s ease' }}>
