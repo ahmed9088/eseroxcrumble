@@ -62,7 +62,49 @@ export async function sendPhoneOTP(phone, code) {
     }
   }
 
-  // 2. Generic SMS / Custom Webhook Gateway Integration
+  // 2. Textbee.dev Free Android SMS Gateway Integration
+  const textbeeApiKey = process.env.TEXTBEE_API_KEY;
+  const textbeeDeviceId = process.env.TEXTBEE_DEVICE_ID;
+
+  if (textbeeApiKey && textbeeDeviceId) {
+    try {
+      console.log(`[Textbee OTP] Attempting to send SMS via Android Phone Gateway...`);
+      let formattedPhone = cleanPhone;
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '+92' + formattedPhone.substring(1);
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+' + formattedPhone;
+      }
+
+      const response = await fetch(
+        `https://api.textbee.dev/api/v1/gateway/devices/${textbeeDeviceId}/send-sms`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': textbeeApiKey,
+          },
+          body: JSON.stringify({
+            recipients: [formattedPhone],
+            message: `Your Cafe Esero verification code is ${code}. It expires in 10 minutes.`,
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        console.error('[Textbee OTP Error] Response failed:', data);
+        return { success: false, error: data.message || 'Textbee send failed.' };
+      }
+      console.log('[Textbee OTP Success] SMS sent:', data);
+      return { success: true, provider: 'textbee' };
+    } catch (err) {
+      console.error('[Textbee OTP Exception]:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  // 3. Generic SMS / Custom Webhook Gateway Integration
   const smsUrl = process.env.SMS_API_URL;
   const smsKey = process.env.SMS_API_KEY;
   if (smsUrl) {
