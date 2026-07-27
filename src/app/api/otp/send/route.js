@@ -48,7 +48,7 @@ export async function POST(request) {
     if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 're_your_api_key' && process.env.RESEND_API_KEY !== 're_dummy_key_for_build') {
       try {
         const { data: emailData, error: emailError } = await resend.emails.send({
-          from: 'Cafe Esero <noreply@resend.dev>', // Resend default domain for sandbox
+          from: 'Cafe Esero <onboarding@resend.dev>', // Resend default domain for sandbox
           to: email,
           subject: '🔑 Your Verification Code - Cafe Esero Preorder',
           html: `

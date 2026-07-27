@@ -182,7 +182,7 @@ export async function POST(request) {
     if (premiumBundleQty > 0) itemsList.push(`<li>Premium Bundle (pack of 4) x ${premiumBundleQty} (${premiumBundleQty * 2400} PKR)<br/><small style="color: #666;">Flavours: ${premiumBundleFlavours}</small></li>`);
 
     const { error: mailError } = await resend.emails.send({
-      from: 'Cafe Esero <noreply@resend.dev>',
+      from: 'Cafe Esero <onboarding@resend.dev>',
       to: email,
       subject: `🍪 Preorder Received! - Ref: #${orderId.substring(0, 8)}`,
       html: `
