@@ -83,6 +83,15 @@ export async function POST(request) {
     }
 
     if (!emailSent) {
+      // In production, we must fail securely and return the actual error so the user knows what's wrong.
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[OTP Error] Failed to send email via Resend in production:', emailErrorMsg);
+        return NextResponse.json(
+          { error: `Email service error: ${emailErrorMsg || 'Resend credentials are missing or incorrect.'}` },
+          { status: 500 }
+        );
+      }
+
       console.log(`\n==================================================`);
       console.log(`🔑 [EMAIL OTP SANDBOX LOG]`);
       console.log(`To Email: ${email}`);
