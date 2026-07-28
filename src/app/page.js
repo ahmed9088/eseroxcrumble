@@ -94,10 +94,11 @@ export default function PreorderPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successOrderId, setSuccessOrderId] = useState('');
   const [copiedField, setCopiedField] = useState('');
+  const [announcement, setAnnouncement] = useState({ text: '', isActive: false });
 
-  // Fetch Stock Status on Mount
+  // Fetch Stock Status and Announcement on Mount
   useEffect(() => {
-    async function loadStock() {
+    async function loadData() {
       try {
         const res = await fetch('/api/admin/stock');
         const data = await res.json();
@@ -107,8 +108,18 @@ export default function PreorderPage() {
       } catch (err) {
         console.error('Failed to load stock settings', err);
       }
+
+      try {
+        const res = await fetch('/api/announcement');
+        if (res.ok) {
+          const data = await res.json();
+          setAnnouncement(data);
+        }
+      } catch (err) {
+        console.error('Failed to load announcement settings', err);
+      }
     }
-    loadStock();
+    loadData();
   }, []);
 
   // Update Bundle Choice elements when quantities change
@@ -651,6 +662,28 @@ export default function PreorderPage() {
             Reserve your favourite Crumble cookies before they're sold out—limited stock available.
           </p>
         </header>
+
+        {announcement && announcement.isActive && announcement.text && (
+          <div 
+            style={{
+              background: 'linear-gradient(135deg, rgba(200, 162, 122, 0.15), rgba(141, 110, 99, 0.15))',
+              border: '1px solid rgba(200, 162, 122, 0.3)',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '25px',
+              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.2)',
+              backdropFilter: 'blur(4px)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '1.25rem' }}>📢</span>
+              <h3 style={{ margin: 0, color: '#c8a27a', fontSize: '1rem', fontWeight: 'bold' }}>Cafe Esero Updates</h3>
+            </div>
+            <p style={{ margin: 0, color: '#d7ccc8', fontSize: '0.9rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+              {announcement.text}
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className={styles.card} id="preorder-form">
           {/* Customer Information */}

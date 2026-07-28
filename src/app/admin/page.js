@@ -84,6 +84,9 @@ export default function AdminPage() {
     premium_bundle: 0,
   });
 
+  // Announcement / Main Page Updates
+  const [announcementForm, setAnnouncementForm] = useState({ text: '', isActive: false });
+
   // Check Authentication Status on mount
   useEffect(() => {
     async function checkAuth() {
@@ -127,6 +130,16 @@ export default function AdminPage() {
       const stkData = await stkRes.json();
       if (requestId === lastRequestTime.current && stkData.stock) {
         setStock(stkData.stock);
+      }
+
+      // Fetch announcement status
+      const annRes = await fetch('/api/announcement');
+      const annData = await annRes.json();
+      if (requestId === lastRequestTime.current) {
+        setAnnouncementForm({
+          text: annData.text || '',
+          isActive: annData.isActive || false
+        });
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
@@ -480,6 +493,28 @@ export default function AdminPage() {
     }
   };
 
+  // Save/Update site-wide updates announcement
+  const handleUpdateAnnouncement = async () => {
+    try {
+      const res = await fetch('/api/announcement', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: announcementForm.text,
+          isActive: announcementForm.isActive,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Announcement updated successfully!');
+      } else {
+        alert(data.error || 'Failed to update announcement.');
+      }
+    } catch (err) {
+      alert('Error updating announcement.');
+    }
+  };
+
   // Export filtered orders to CSV
   const handleExportCSV = () => {
     if (orders.length === 0) return;
@@ -765,6 +800,60 @@ export default function AdminPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </section>
+
+        {/* Announcement / Site-wide Updates Section */}
+        <section className={styles.stockCard} style={{ marginTop: '25px' }}>
+          <h3 className={styles.stockHeader}>
+            <span>📢 Main Page Updates & Announcement Banner</span>
+            <small style={{ fontSize: '0.8rem', color: '#a1887f', fontWeight: 'normal', display: 'block', marginTop: '5px' }}>
+              Publish announcements, timing changes, or sold out notices live on the customer preorder form.
+            </small>
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.85rem', color: '#c8a27a', fontWeight: 'bold' }}>Announcement Text (Free Text):</label>
+              <textarea
+                value={announcementForm.text}
+                onChange={(e) => setAnnouncementForm(prev => ({ ...prev, text: e.target.value }))}
+                placeholder="Write your announcement or updates here..."
+                rows="4"
+                style={{
+                  width: '100%',
+                  background: '#130c08',
+                  color: 'white',
+                  border: '1px solid rgba(200,162,122,0.2)',
+                  borderRadius: '6px',
+                  padding: '12px',
+                  outline: 'none',
+                  fontSize: '0.9rem',
+                  lineHeight: '1.5',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '0.85rem', color: '#c8a27a', fontWeight: 'bold' }}>Show Banner on Form:</span>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={announcementForm.isActive}
+                    onChange={(e) => setAnnouncementForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+              <button
+                type="button"
+                className={styles.saveStockBtn}
+                style={{ padding: '0 25px', height: '40px' }}
+                onClick={handleUpdateAnnouncement}
+              >
+                Save Announcement
+              </button>
+            </div>
           </div>
         </section>
 
