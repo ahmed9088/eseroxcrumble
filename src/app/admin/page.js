@@ -34,6 +34,56 @@ export default function AdminPage() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [zoomedImg, setZoomedImg] = useState(null);
 
+  // Editing Order State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    orderType: 'takeaway',
+    deliveryStreet: '',
+    deliveryStreet2: '',
+    deliveryCity: '',
+    deliveryState: '',
+    deliveryZip: '',
+    deliveryLandmark: '',
+    paymentProofUrl: '',
+  });
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Custom Order Creation State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    orderType: 'takeaway',
+    deliveryStreet: '',
+    deliveryStreet2: '',
+    deliveryCity: '',
+    deliveryState: '',
+    deliveryZip: '',
+    deliveryLandmark: '',
+    paymentProofUrl: 'whatsapp_verified',
+    paymentStatus: 'approved',
+    orderStatus: 'received',
+    classicBundleFlavours: '',
+    premiumBundleFlavours: '',
+  });
+  const [createFormQuantities, setCreateFormQuantities] = useState({
+    classic_chocolate_chip: 0,
+    double_chocolate: 0,
+    chocolate_chip_walnut: 0,
+    cookies_cream: 0,
+    kunafa_chocolate: 0,
+    hazelnut_filled: 0,
+    lotus_lava: 0,
+    classic_bundle: 0,
+    premium_bundle: 0,
+  });
+
   // Check Authentication Status on mount
   useEffect(() => {
     async function checkAuth() {
@@ -208,6 +258,228 @@ export default function AdminPage() {
     }
   };
 
+  // Start editing the selected order details
+  const startEditing = () => {
+    if (!selectedOrder) return;
+    setEditForm({
+      firstName: selectedOrder.first_name || '',
+      lastName: selectedOrder.last_name || '',
+      email: selectedOrder.email || '',
+      phone: selectedOrder.phone || '',
+      orderType: selectedOrder.order_type || 'takeaway',
+      deliveryStreet: selectedOrder.delivery_street || '',
+      deliveryStreet2: selectedOrder.delivery_street2 || '',
+      deliveryCity: selectedOrder.delivery_city || '',
+      deliveryState: selectedOrder.delivery_state || '',
+      deliveryZip: selectedOrder.delivery_zip || '',
+      deliveryLandmark: selectedOrder.delivery_landmark || '',
+      paymentProofUrl: selectedOrder.payment_proof_url || '',
+    });
+    setIsEditing(true);
+  };
+
+  const handleEditFormChange = (field, val) => {
+    setEditForm(prev => ({ ...prev, [field]: val }));
+  };
+
+  // Upload replacement screenshot from admin panel (e.g. WhatsApp screenshots)
+  const handleUploadReplacementScreenshot = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        handleEditFormChange('paymentProofUrl', data.url);
+        alert('Replacement screenshot uploaded successfully.');
+      } else {
+        alert(data.error || 'Screenshot upload failed.');
+      }
+    } catch (err) {
+      alert('Error uploading screenshot.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Save the edited order details to database
+  const handleSaveEditedOrder = async () => {
+    if (!selectedOrder) return;
+    try {
+      const res = await fetch('/api/admin/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          firstName: editForm.firstName,
+          lastName: editForm.lastName,
+          email: editForm.email,
+          phone: editForm.phone,
+          orderType: editForm.orderType,
+          deliveryStreet: editForm.deliveryStreet,
+          deliveryStreet2: editForm.deliveryStreet2,
+          deliveryCity: editForm.deliveryCity,
+          deliveryState: editForm.deliveryState,
+          deliveryZip: editForm.deliveryZip,
+          deliveryLandmark: editForm.deliveryLandmark,
+          paymentProofUrl: editForm.paymentProofUrl,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const updated = {
+          ...selectedOrder,
+          first_name: editForm.firstName,
+          last_name: editForm.lastName,
+          email: editForm.email,
+          phone: editForm.phone,
+          order_type: editForm.orderType,
+          delivery_street: editForm.deliveryStreet,
+          delivery_street2: editForm.deliveryStreet2,
+          delivery_city: editForm.deliveryCity,
+          delivery_state: editForm.deliveryState,
+          delivery_zip: editForm.deliveryZip,
+          delivery_landmark: editForm.deliveryLandmark,
+          payment_proof_url: editForm.paymentProofUrl,
+        };
+        setSelectedOrder(updated);
+        setOrders(prev => prev.map(o => o.id === selectedOrder.id ? updated : o));
+        setIsEditing(false);
+        alert('Order updated successfully.');
+      } else {
+        alert(data.error || 'Failed to save edits.');
+      }
+    } catch (err) {
+      alert('Network error saving edits.');
+    }
+  };
+
+  // Upload screenshot from admin panel when creating custom order
+  const handleUploadCreateScreenshot = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        setCreateForm(prev => ({ ...prev, paymentProofUrl: data.url }));
+        alert('Screenshot uploaded successfully.');
+      } else {
+        alert(data.error || 'Screenshot upload failed.');
+      }
+    } catch (err) {
+      alert('Error uploading screenshot.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Submit custom preorder created by admin
+  const handleCreateCustomOrder = async () => {
+    if (!createForm.firstName || !createForm.phone || !createForm.email) {
+      alert('First Name, Phone, and Email are required.');
+      return;
+    }
+
+    // Calculate total price based on active catalog pricing
+    const subtotal = Object.entries(createFormQuantities).reduce((acc, [item, qty]) => {
+      const itemPrice = stock[item]?.price || 0;
+      return acc + qty * itemPrice;
+    }, 0);
+    const deliveryFee = createForm.orderType === 'delivery' ? 300 : 0;
+    const totalAmount = subtotal + deliveryFee;
+
+    try {
+      const payload = {
+        firstName: createForm.firstName,
+        lastName: createForm.lastName,
+        email: createForm.email,
+        phone: createForm.phone,
+        orderType: createForm.orderType,
+        deliveryStreet: createForm.deliveryStreet,
+        deliveryStreet2: createForm.deliveryStreet2,
+        deliveryCity: createForm.deliveryCity,
+        deliveryState: createForm.deliveryState,
+        deliveryZip: createForm.deliveryZip,
+        deliveryLandmark: createForm.deliveryLandmark,
+        classicChocolateChipQty: createFormQuantities.classic_chocolate_chip,
+        doubleChocolateQty: createFormQuantities.double_chocolate,
+        chocolateChipWalnutQty: createFormQuantities.chocolate_chip_walnut,
+        cookiesCreamQty: createFormQuantities.cookies_cream,
+        kunafaChocolateQty: createFormQuantities.kunafa_chocolate,
+        hazelnutFilledQty: createFormQuantities.hazelnut_filled,
+        lotusLavaQty: createFormQuantities.lotus_lava,
+        classicBundleQty: createFormQuantities.classic_bundle,
+        classicBundleFlavours: createForm.classicBundleFlavours,
+        premiumBundleQty: createFormQuantities.premium_bundle,
+        premiumBundleFlavours: createForm.premiumBundleFlavours,
+        totalAmount,
+        paymentProofUrl: createForm.paymentProofUrl || 'whatsapp_verified',
+        paymentStatus: createForm.paymentStatus,
+        orderStatus: createForm.orderStatus,
+      };
+
+      const res = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert('Custom preorder created successfully!');
+        setShowCreateModal(false);
+        // Reset state
+        setCreateForm({
+          firstName: '',
+          lastName: '',
+          email: '',
+          phone: '',
+          orderType: 'takeaway',
+          deliveryStreet: '',
+          deliveryStreet2: '',
+          deliveryCity: '',
+          deliveryState: '',
+          deliveryZip: '',
+          deliveryLandmark: '',
+          paymentProofUrl: 'whatsapp_verified',
+          paymentStatus: 'approved',
+          orderStatus: 'received',
+          classicBundleFlavours: '',
+          premiumBundleFlavours: '',
+        });
+        setCreateFormQuantities({
+          classic_chocolate_chip: 0,
+          double_chocolate: 0,
+          chocolate_chip_walnut: 0,
+          cookies_cream: 0,
+          kunafa_chocolate: 0,
+          hazelnut_filled: 0,
+          lotus_lava: 0,
+          classic_bundle: 0,
+          premium_bundle: 0,
+        });
+        loadDashboardData(); // Refresh list
+      } else {
+        alert(data.error || 'Failed to create preorder. Stock check failed.');
+      }
+    } catch (err) {
+      alert('Error creating preorder.');
+    }
+  };
+
   // Export filtered orders to CSV
   const handleExportCSV = () => {
     if (orders.length === 0) return;
@@ -358,15 +630,24 @@ export default function AdminPage() {
   return (
     <div className={styles.container}>
       <div className={styles.inner}>
-        {/* Header */}
         <header className={styles.header}>
           <div>
             <h1 className={styles.title}>☕ Cafe Esero Admin Dashboard</h1>
             <p className={styles.subtitle}>Manage preorders, verify payments, and control live cookie stock status.</p>
           </div>
-          <button className={styles.logoutBtn} onClick={handleLogout} id="admin-logout-btn">
-            Logout Session
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button 
+              className={styles.saveStockBtn} 
+              style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}
+              onClick={() => setShowCreateModal(true)}
+              id="admin-create-custom-order-btn"
+            >
+              ➕ Create Custom Order
+            </button>
+            <button className={styles.logoutBtn} onClick={handleLogout} id="admin-logout-btn">
+              Logout Session
+            </button>
+          </div>
         </header>
 
         {/* Stats Grid */}
@@ -650,211 +931,408 @@ export default function AdminPage() {
               </button>
             </div>
             <div className={styles.modalBody}>
-              <div className={styles.modalGrid}>
-                {/* Column 1: Info */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div className={styles.infoSection}>
-                    <h4>👤 Customer Details</h4>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Full Name:</span>
-                      <span className={styles.detailValue}>
-                        {selectedOrder.first_name} {selectedOrder.last_name}
-                      </span>
+              {isEditing ? (
+                <div className={styles.modalGrid}>
+                  {/* Column 1: Edit Fields */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    <div className={styles.infoSection}>
+                      <h4 style={{ margin: '0 0 10px 0' }}>👤 Edit Customer Details</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>First Name</label>
+                          <input
+                            type="text"
+                            value={editForm.firstName}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => handleEditFormChange('firstName', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Last Name</label>
+                          <input
+                            type="text"
+                            value={editForm.lastName}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => handleEditFormChange('lastName', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Phone / WhatsApp</label>
+                        <input
+                          type="text"
+                          value={editForm.phone}
+                          className={styles.stockInput}
+                          style={{ width: '100%' }}
+                          onChange={(e) => handleEditFormChange('phone', e.target.value)}
+                        />
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Email Address</label>
+                        <input
+                          type="email"
+                          value={editForm.email}
+                          className={styles.stockInput}
+                          style={{ width: '100%' }}
+                          onChange={(e) => handleEditFormChange('email', e.target.value)}
+                        />
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Order Type</label>
+                        <select
+                          value={editForm.orderType}
+                          className={styles.stockInput}
+                          style={{ width: '100%', height: '36px', background: '#130c08', color: '#fff' }}
+                          onChange={(e) => handleEditFormChange('orderType', e.target.value)}
+                        >
+                          <option value="takeaway">Takeaway</option>
+                          <option value="delivery">Delivery</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Phone / WhatsApp:</span>
-                      <span className={styles.detailValue}>{selectedOrder.phone}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Email Address:</span>
-                      <span className={styles.detailValue} style={{ wordBreak: 'break-all' }}>
-                        {selectedOrder.email}
-                      </span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Order Type:</span>
-                      <span className={styles.detailValue} style={{ textTransform: 'capitalize' }}>
-                        {selectedOrder.order_type.replace('_', ' ')}
-                      </span>
-                    </div>
+
+                    {editForm.orderType === 'delivery' && (
+                      <div className={styles.infoSection}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>🛵 Edit Delivery Location</h4>
+                        <div style={{ marginBottom: '10px' }}>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Street</label>
+                          <input
+                            type="text"
+                            value={editForm.deliveryStreet}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => handleEditFormChange('deliveryStreet', e.target.value)}
+                          />
+                        </div>
+                        <div style={{ marginBottom: '10px' }}>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Line 2</label>
+                          <input
+                            type="text"
+                            value={editForm.deliveryStreet2}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => handleEditFormChange('deliveryStreet2', e.target.value)}
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>City</label>
+                            <input
+                              type="text"
+                              value={editForm.deliveryCity}
+                              className={styles.stockInput}
+                              style={{ width: '100%' }}
+                              onChange={(e) => handleEditFormChange('deliveryCity', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Province</label>
+                            <input
+                              type="text"
+                              value={editForm.deliveryState}
+                              className={styles.stockInput}
+                              style={{ width: '100%' }}
+                              onChange={(e) => handleEditFormChange('deliveryState', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Zip Code</label>
+                            <input
+                              type="text"
+                              value={editForm.deliveryZip}
+                              className={styles.stockInput}
+                              style={{ width: '100%' }}
+                              onChange={(e) => handleEditFormChange('deliveryZip', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Landmark</label>
+                            <input
+                              type="text"
+                              value={editForm.deliveryLandmark}
+                              className={styles.stockInput}
+                              style={{ width: '100%' }}
+                              onChange={(e) => handleEditFormChange('deliveryLandmark', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {selectedOrder.order_type === 'delivery' && (
+                  {/* Column 2: Edit Payment proof */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                     <div className={styles.infoSection}>
-                      <h4>🛵 Delivery Location</h4>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Street:</span>
-                        <span className={styles.detailValue}>{selectedOrder.delivery_street}</span>
+                      <h4 style={{ margin: '0 0 10px 0' }}>📸 Edit Payment Proof Screenshot</h4>
+                      <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Paste Screenshot Link manually</label>
+                        <input
+                          type="text"
+                          value={editForm.paymentProofUrl}
+                          className={styles.stockInput}
+                          style={{ width: '100%' }}
+                          onChange={(e) => handleEditFormChange('paymentProofUrl', e.target.value)}
+                        />
                       </div>
-                      {selectedOrder.delivery_street2 && (
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Line 2:</span>
-                          <span className={styles.detailValue}>{selectedOrder.delivery_street2}</span>
-                        </div>
-                      )}
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>City:</span>
-                        <span className={styles.detailValue}>{selectedOrder.delivery_city}</span>
+                      <div style={{ backgroundColor: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '8px', border: '1px dashed rgba(200,162,122,0.2)' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '8px', fontWeight: 'bold' }}>
+                          Or Upload Replacement Screenshot (WhatsApp / Re-received):
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={handleUploadReplacementScreenshot}
+                          disabled={isUploading}
+                          style={{ fontSize: '0.8rem', color: '#a1887f' }}
+                        />
+                        {isUploading && <p style={{ color: '#c8a27a', fontSize: '0.75rem', marginTop: '5px' }}>Uploading Replacement Image...</p>}
                       </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>State/Province:</span>
-                        <span className={styles.detailValue}>{selectedOrder.delivery_state}</span>
-                      </div>
-                      {selectedOrder.delivery_zip && (
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Zip Code:</span>
-                          <span className={styles.detailValue}>{selectedOrder.delivery_zip}</span>
-                        </div>
-                      )}
-                      {selectedOrder.delivery_landmark && (
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Landmark:</span>
-                          <span className={styles.detailValue}>{selectedOrder.delivery_landmark}</span>
+                      {editForm.paymentProofUrl && (
+                        <div style={{ marginTop: '15px' }}>
+                          <p style={{ fontSize: '0.75rem', color: '#8d6e63', marginBottom: '5px' }}>Preview:</p>
+                          <img
+                            src={editForm.paymentProofUrl}
+                            alt="Current Edit Preview"
+                            style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '6px', border: '1px solid rgba(200,162,122,0.15)', objectFit: 'contain' }}
+                          />
                         </div>
                       )}
                     </div>
-                  )}
 
-                  <div className={styles.infoSection}>
-                    <h4>🍪 Order Quantities</h4>
-                    {getOrderItemsList(selectedOrder).map((item) => (
-                      <div key={item.name} style={{ marginBottom: '10px', fontSize: '0.85rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                          <span>{item.name} x {item.qty}</span>
-                          <span>PKR {(item.qty * item.price).toLocaleString()}</span>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                      <button
+                        onClick={handleSaveEditedOrder}
+                        className={`${styles.actionBtn} ${styles.btnApprove}`}
+                        style={{ flex: 1 }}
+                      >
+                        💾 Save Changes
+                      </button>
+                      <button
+                        onClick={() => setIsEditing(false)}
+                        className={`${styles.actionBtn} ${styles.btnDecline}`}
+                        style={{ flex: 1 }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.modalGrid}>
+                  {/* Column 1: Info */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className={styles.infoSection}>
+                      <h4>👤 Customer Details</h4>
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>Full Name:</span>
+                        <span className={styles.detailValue}>
+                          {selectedOrder.first_name} {selectedOrder.last_name}
+                        </span>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>Phone / WhatsApp:</span>
+                        <span className={styles.detailValue}>{selectedOrder.phone}</span>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>Email Address:</span>
+                        <span className={styles.detailValue} style={{ wordBreak: 'break-all' }}>
+                          {selectedOrder.email}
+                        </span>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>Order Type:</span>
+                        <span className={styles.detailValue} style={{ textTransform: 'capitalize' }}>
+                          {selectedOrder.order_type.replace('_', ' ')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {selectedOrder.order_type === 'delivery' && (
+                      <div className={styles.infoSection}>
+                        <h4>🛵 Delivery Location</h4>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Street:</span>
+                          <span className={styles.detailValue}>{selectedOrder.delivery_street}</span>
                         </div>
-                        {item.customFlavours && (
-                          <div style={{ color: '#a1887f', fontSize: '0.75rem', marginTop: '3px', paddingLeft: '10px' }}>
-                            Flavours: {item.customFlavours}
+                        {selectedOrder.delivery_street2 && (
+                          <div className={styles.detailRow}>
+                            <span className={styles.detailLabel}>Line 2:</span>
+                            <span className={styles.detailValue}>{selectedOrder.delivery_street2}</span>
+                          </div>
+                        )}
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>City:</span>
+                          <span className={styles.detailValue}>{selectedOrder.delivery_city}</span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>State/Province:</span>
+                          <span className={styles.detailValue}>{selectedOrder.delivery_state}</span>
+                        </div>
+                        {selectedOrder.delivery_zip && (
+                          <div className={styles.detailRow}>
+                            <span className={styles.detailLabel}>Zip Code:</span>
+                            <span className={styles.detailValue}>{selectedOrder.delivery_zip}</span>
+                          </div>
+                        )}
+                        {selectedOrder.delivery_landmark && (
+                          <div className={styles.detailRow}>
+                            <span className={styles.detailLabel}>Landmark:</span>
+                            <span className={styles.detailValue}>{selectedOrder.delivery_landmark}</span>
                           </div>
                         )}
                       </div>
-                    ))}
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        fontWeight: 'bold',
-                        borderTop: '1px solid rgba(200, 162, 122, 0.15)',
-                        paddingTop: '10px',
-                        marginTop: '10px',
-                        fontSize: '0.95rem',
-                        color: '#c8a27a',
-                      }}
-                    >
-                      <span>Total Invoice:</span>
-                      <span>PKR {parseInt(selectedOrder.total_amount, 10).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
+                    )}
 
-                {/* Column 2: Payment Proof Screenshot */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div className={styles.infoSection} style={{ flex: 1 }}>
-                    <h4>📸 Payment proof Screenshot</h4>
-                    <div className={styles.proofContainer}>
-                      {selectedOrder.payment_proof_url.endsWith('.pdf') ? (
-                        <a
-                          href={selectedOrder.payment_proof_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{
-                            color: '#c8a27a',
-                            fontWeight: 'bold',
-                            display: 'inline-block',
-                            padding: '15px',
-                            backgroundColor: 'rgba(255,255,255,0.05)',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(200,162,122,0.15)',
-                            textDecoration: 'none',
-                          }}
-                        >
-                          📄 View PDF Payment Slip
-                        </a>
-                      ) : (
-                        <div>
-                          <img
-                            src={selectedOrder.payment_proof_url}
-                            alt="Payment receipt proof"
-                            className={styles.proofImg}
-                            onClick={() => setZoomedImg(selectedOrder.payment_proof_url)}
-                          />
-                          <p style={{ fontSize: '0.75rem', color: '#a1887f', margin: '8px 0 0 0' }}>
-                            Click image to zoom/inspect receipt
-                          </p>
+                    <div className={styles.infoSection}>
+                      <h4>🍪 Order Quantities</h4>
+                      {getOrderItemsList(selectedOrder).map((item) => (
+                        <div key={item.name} style={{ marginBottom: '10px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                            <span>{item.name} x {item.qty}</span>
+                            <span>PKR {(item.qty * item.price).toLocaleString()}</span>
+                          </div>
+                          {item.customFlavours && (
+                            <div style={{ color: '#a1887f', fontSize: '0.75rem', marginTop: '3px', paddingLeft: '10px' }}>
+                              Flavours: {item.customFlavours}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      ))}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontWeight: 'bold',
+                          borderTop: '1px solid rgba(200, 162, 122, 0.15)',
+                          paddingTop: '10px',
+                          marginTop: '10px',
+                          fontSize: '0.95rem',
+                          color: '#c8a27a',
+                        }}
+                      >
+                        <span>Total Invoice:</span>
+                        <span>PKR {parseInt(selectedOrder.total_amount, 10).toLocaleString()}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className={styles.infoSection}>
-                    <h4>⚙️ Status Actions</h4>
-                    <div className={styles.detailRow} style={{ marginBottom: '15px', alignItems: 'center' }}>
-                      <span className={styles.detailLabel}>Verify Transfer:</span>
-                      <span className={styles.detailValue}>
-                        <span
-                          className={`${styles.badgeStatus} ${
-                            selectedOrder.payment_status === 'pending'
-                              ? styles.statusPending
-                              : selectedOrder.payment_status === 'approved'
-                              ? styles.statusApproved
-                              : styles.statusRejected
-                          }`}
-                        >
-                          {selectedOrder.payment_status}
-                        </span>
-                      </span>
-                    </div>
-                    <div className={styles.detailRow} style={{ alignItems: 'center', marginBottom: '15px' }}>
-                      <span className={styles.detailLabel}>Order Status:</span>
-                      <span className={styles.detailValue}>
-                        <select
-                          value={selectedOrder.order_status}
-                          onChange={(e) => handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
-                          style={{
-                            padding: '8px 12px',
-                            borderRadius: '6px',
-                            backgroundColor: '#130c08',
-                            color: 'white',
-                            border: '1px solid rgba(200,162,122,0.2)',
-                            outline: 'none',
-                          }}
-                          id="admin-change-order-status"
-                        >
-                          <option value="received">Received</option>
-                          <option value="preparing">Preparing</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </span>
+                  {/* Column 2: Payment Proof Screenshot */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className={styles.infoSection} style={{ flex: 1 }}>
+                      <h4>📸 Payment proof Screenshot</h4>
+                      <div className={styles.proofContainer}>
+                        {selectedOrder.payment_proof_url.endsWith('.pdf') ? (
+                          <a
+                            href={selectedOrder.payment_proof_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              color: '#c8a27a',
+                              fontWeight: 'bold',
+                              display: 'inline-block',
+                              padding: '15px',
+                              backgroundColor: 'rgba(255,255,255,0.05)',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(200,162,122,0.15)',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            📄 View PDF Payment Slip
+                          </a>
+                        ) : (
+                          <div>
+                            <img
+                              src={selectedOrder.payment_proof_url}
+                              alt="Payment receipt proof"
+                              className={styles.proofImg}
+                              onClick={() => setZoomedImg(selectedOrder.payment_proof_url)}
+                            />
+                            <p style={{ fontSize: '0.75rem', color: '#a1887f', margin: '8px 0 0 0' }}>
+                              Click image to zoom/inspect receipt
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                      <button
-                        onClick={() => handleUpdatePayment(selectedOrder.id, 'approved')}
-                        disabled={selectedOrder.payment_status === 'approved'}
-                        className={`${styles.actionBtn} ${styles.btnApprove}`}
-                        style={{ flex: 1 }}
-                        id="admin-btn-approve-payment"
-                      >
-                        Approve Payment
-                      </button>
-                      <button
-                        onClick={() => handleUpdatePayment(selectedOrder.id, 'rejected')}
-                        disabled={selectedOrder.payment_status === 'rejected'}
-                        className={`${styles.actionBtn} ${styles.btnDecline}`}
-                        style={{ flex: 1 }}
-                        id="admin-btn-reject-payment"
-                      >
-                        Decline
-                      </button>
+                    <div className={styles.infoSection}>
+                      <h4>⚙️ Status Actions</h4>
+                      <div className={styles.detailRow} style={{ marginBottom: '15px', alignItems: 'center' }}>
+                        <span className={styles.detailLabel}>Verify Transfer:</span>
+                        <span className={styles.detailValue}>
+                          <span
+                            className={`${styles.badgeStatus} ${
+                              selectedOrder.payment_status === 'pending'
+                                ? styles.statusPending
+                                : selectedOrder.payment_status === 'approved'
+                                ? styles.statusApproved
+                                : styles.statusRejected
+                            }`}
+                          >
+                            {selectedOrder.payment_status}
+                          </span>
+                        </span>
+                      </div>
+                      <div className={styles.detailRow} style={{ alignItems: 'center', marginBottom: '15px' }}>
+                        <span className={styles.detailLabel}>Order Status:</span>
+                        <span className={styles.detailValue}>
+                          <select
+                            value={selectedOrder.order_status}
+                            onChange={(e) => handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: '#130c08',
+                              color: 'white',
+                              border: '1px solid rgba(200,162,122,0.2)',
+                              outline: 'none',
+                            }}
+                            id="admin-change-order-status"
+                          >
+                            <option value="received">Received</option>
+                            <option value="preparing">Preparing</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                        <button
+                          onClick={() => handleUpdatePayment(selectedOrder.id, 'approved')}
+                          disabled={selectedOrder.payment_status === 'approved'}
+                          className={`${styles.actionBtn} ${styles.btnApprove}`}
+                          style={{ flex: 1 }}
+                          id="admin-btn-approve-payment"
+                        >
+                          Approve Payment
+                        </button>
+                        <button
+                          onClick={() => handleUpdatePayment(selectedOrder.id, 'rejected')}
+                          disabled={selectedOrder.payment_status === 'rejected'}
+                          className={`${styles.actionBtn} ${styles.btnDecline}`}
+                          style={{ flex: 1 }}
+                          id="admin-btn-reject-payment"
+                        >
+                          Decline
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              <div className={styles.actionBlock}>
-                <button className={`${styles.actionBtn} ${styles.btnClose}`} onClick={() => setSelectedOrder(null)}>
+              <div className={styles.actionBlock} style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                {!isEditing && (
+                  <button className={`${styles.actionBtn} ${styles.btnApprove}`} onClick={startEditing}>
+                    ✏️ Edit Details
+                  </button>
+                )}
+                <button className={`${styles.actionBtn} ${styles.btnClose}`} onClick={() => { setSelectedOrder(null); setIsEditing(false); }}>
                   Close Details
                 </button>
               </div>
@@ -867,6 +1345,297 @@ export default function AdminPage() {
       {zoomedImg && (
         <div className={styles.zoomOverlay} onClick={() => setZoomedImg(null)}>
           <img src={zoomedImg} alt="Zoomed payment receipt" className={styles.zoomImg} />
+        </div>
+      )}
+
+      {/* Create Custom Order Modal */}
+      {showCreateModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowCreateModal(false)}>
+          <div className={styles.modalContent} style={{ maxWidth: '750px' }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 style={{ margin: 0, color: '#c8a27a', fontSize: '1.25rem' }}>➕ Create Custom Preorder</h2>
+              <button
+                style={{ background: 'none', border: 'none', color: '#a1887f', fontSize: '1.5rem', cursor: 'pointer' }}
+                onClick={() => setShowCreateModal(false)}
+              >
+                &times;
+              </button>
+            </div>
+            <div className={styles.modalBody} style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+              <div className={styles.modalGrid}>
+                {/* Column 1: Customer Details */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <div className={styles.infoSection}>
+                    <h4 style={{ margin: '0 0 10px 0' }}>👤 Customer Information</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>First Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={createForm.firstName}
+                          className={styles.stockInput}
+                          style={{ width: '100%' }}
+                          onChange={(e) => setCreateForm(prev => ({ ...prev, firstName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Last Name</label>
+                        <input
+                          type="text"
+                          value={createForm.lastName}
+                          className={styles.stockInput}
+                          style={{ width: '100%' }}
+                          onChange={(e) => setCreateForm(prev => ({ ...prev, lastName: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Phone / WhatsApp *</label>
+                      <input
+                        type="text"
+                        required
+                        value={createForm.phone}
+                        className={styles.stockInput}
+                        style={{ width: '100%' }}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, phone: e.target.value }))}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Email Address *</label>
+                      <input
+                        type="email"
+                        required
+                        value={createForm.email}
+                        className={styles.stockInput}
+                        style={{ width: '100%' }}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, email: e.target.value }))}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Order Type</label>
+                      <select
+                        value={createForm.orderType}
+                        className={styles.stockInput}
+                        style={{ width: '100%', height: '36px', background: '#130c08', color: '#fff' }}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, orderType: e.target.value }))}
+                      >
+                        <option value="takeaway">Takeaway</option>
+                        <option value="delivery">Delivery</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {createForm.orderType === 'delivery' && (
+                    <div className={styles.infoSection}>
+                      <h4 style={{ margin: '0 0 10px 0' }}>🛵 Delivery Address</h4>
+                      <div style={{ marginBottom: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Street Address</label>
+                        <input
+                          type="text"
+                          value={createForm.deliveryStreet}
+                          className={styles.stockInput}
+                          style={{ width: '100%' }}
+                          onChange={(e) => setCreateForm(prev => ({ ...prev, deliveryStreet: e.target.value }))}
+                        />
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Line 2 (Optional)</label>
+                        <input
+                          type="text"
+                          value={createForm.deliveryStreet2}
+                          className={styles.stockInput}
+                          style={{ width: '100%' }}
+                          onChange={(e) => setCreateForm(prev => ({ ...prev, deliveryStreet2: e.target.value }))}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>City</label>
+                          <input
+                            type="text"
+                            value={createForm.deliveryCity}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => setCreateForm(prev => ({ ...prev, deliveryCity: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Province</label>
+                          <input
+                            type="text"
+                            value={createForm.deliveryState}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => setCreateForm(prev => ({ ...prev, deliveryState: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Zip Code</label>
+                          <input
+                            type="text"
+                            value={createForm.deliveryZip}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => setCreateForm(prev => ({ ...prev, deliveryZip: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Landmark</label>
+                          <input
+                            type="text"
+                            value={createForm.deliveryLandmark}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => setCreateForm(prev => ({ ...prev, deliveryLandmark: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className={styles.infoSection}>
+                    <h4 style={{ margin: '0 0 10px 0' }}>⚙️ Order Status</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Payment Status</label>
+                        <select
+                          value={createForm.paymentStatus}
+                          className={styles.stockInput}
+                          style={{ width: '100%', height: '36px', background: '#130c08', color: '#fff' }}
+                          onChange={(e) => setCreateForm(prev => ({ ...prev, paymentStatus: e.target.value }))}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Rejected</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Order Status</label>
+                        <select
+                          value={createForm.orderStatus}
+                          className={styles.stockInput}
+                          style={{ width: '100%', height: '36px', background: '#130c08', color: '#fff' }}
+                          onChange={(e) => setCreateForm(prev => ({ ...prev, orderStatus: e.target.value }))}
+                        >
+                          <option value="received">Received</option>
+                          <option value="preparing">Preparing</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Column 2: Cookie Selections & Bundles */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <div className={styles.infoSection}>
+                    <h4 style={{ margin: '0 0 10px 0' }}>🍪 Cookie Catalog Quantities</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px', gap: '10px 15px', alignItems: 'center' }}>
+                      {Object.keys(createFormQuantities).map((flavorKey) => (
+                        <div key={flavorKey} style={{ display: 'contents' }}>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
+                            {flavorKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={createFormQuantities[flavorKey]}
+                            className={styles.stockInput}
+                            style={{ width: '60px' }}
+                            onChange={(e) => setCreateFormQuantities(prev => ({ ...prev, [flavorKey]: parseInt(e.target.value, 10) || 0 }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {(createFormQuantities.classic_bundle > 0 || createFormQuantities.premium_bundle > 0) && (
+                    <div className={styles.infoSection}>
+                      <h4 style={{ margin: '0 0 10px 0' }}>📦 Bundle Flavours Selected</h4>
+                      {createFormQuantities.classic_bundle > 0 && (
+                        <div style={{ marginBottom: '10px' }}>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>
+                            Classic Bundle Flavours (comma-separated, max 4 per pack):
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Classic Chocolate Chip, Double Chocolate"
+                            value={createForm.classicBundleFlavours}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => setCreateForm(prev => ({ ...prev, classicBundleFlavours: e.target.value }))}
+                          />
+                        </div>
+                      )}
+                      {createFormQuantities.premium_bundle > 0 && (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>
+                            Premium Bundle Flavours (comma-separated, max 4 per pack):
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Cookies & Cream, Kunafa Chocolate"
+                            value={createForm.premiumBundleFlavours}
+                            className={styles.stockInput}
+                            style={{ width: '100%' }}
+                            onChange={(e) => setCreateForm(prev => ({ ...prev, premiumBundleFlavours: e.target.value }))}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className={styles.infoSection}>
+                    <h4 style={{ margin: '0 0 10px 0' }}>📸 Receipt slip Screenshot</h4>
+                    <div style={{ marginBottom: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>Screenshot Link / Note</label>
+                      <input
+                        type="text"
+                        value={createForm.paymentProofUrl}
+                        className={styles.stockInput}
+                        style={{ width: '100%' }}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, paymentProofUrl: e.target.value }))}
+                      />
+                    </div>
+                    <div style={{ backgroundColor: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px dashed rgba(200,162,122,0.2)' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '6px', fontWeight: 'bold' }}>
+                        Or Upload WhatsApp screenshot:
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={handleUploadCreateScreenshot}
+                        disabled={isUploading}
+                        style={{ fontSize: '0.8rem', color: '#a1887f' }}
+                      />
+                      {isUploading && <p style={{ color: '#c8a27a', fontSize: '0.75rem', marginTop: '4px' }}>Uploading Image...</p>}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                    <button
+                      onClick={handleCreateCustomOrder}
+                      className={`${styles.actionBtn} ${styles.btnApprove}`}
+                      style={{ flex: 1 }}
+                    >
+                      🚀 Submit Custom Preorder
+                    </button>
+                    <button
+                      onClick={() => setShowCreateModal(false)}
+                      className={`${styles.actionBtn} ${styles.btnDecline}`}
+                      style={{ flex: 1 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

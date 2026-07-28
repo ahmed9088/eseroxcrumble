@@ -69,7 +69,23 @@ export async function PUT(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { orderId, paymentStatus, orderStatus } = await request.json();
+    const {
+      orderId,
+      paymentStatus,
+      orderStatus,
+      firstName,
+      lastName,
+      email,
+      phone,
+      orderType,
+      deliveryStreet,
+      deliveryStreet2,
+      deliveryCity,
+      deliveryState,
+      deliveryZip,
+      deliveryLandmark,
+      paymentProofUrl
+    } = await request.json();
 
     if (!orderId) {
       return NextResponse.json({ error: 'Order ID is required.' }, { status: 400 });
@@ -154,6 +170,18 @@ export async function PUT(request) {
     const updates = {};
     if (paymentStatus) updates.payment_status = paymentStatus;
     if (orderStatus) updates.order_status = orderStatus;
+    if (firstName !== undefined) updates.first_name = firstName;
+    if (lastName !== undefined) updates.last_name = lastName;
+    if (email !== undefined) updates.email = email;
+    if (phone !== undefined) updates.phone = phone;
+    if (orderType !== undefined) updates.order_type = orderType;
+    if (deliveryStreet !== undefined) updates.delivery_street = deliveryStreet;
+    if (deliveryStreet2 !== undefined) updates.delivery_street2 = deliveryStreet2;
+    if (deliveryCity !== undefined) updates.delivery_city = deliveryCity;
+    if (deliveryState !== undefined) updates.delivery_state = deliveryState;
+    if (deliveryZip !== undefined) updates.delivery_zip = deliveryZip;
+    if (deliveryLandmark !== undefined) updates.delivery_landmark = deliveryLandmark;
+    if (paymentProofUrl !== undefined) updates.payment_proof_url = paymentProofUrl;
 
     const { data: updatedOrder, error: updateError } = await supabaseAdmin
       .from('orders')
@@ -294,4 +322,129 @@ function getOrderCookieDeductions(o) {
   }
 
   return deductions;
+}
+
+export async function POST(request) {
+  try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      orderType,
+      deliveryStreet,
+      deliveryStreet2,
+      deliveryCity,
+      deliveryState,
+      deliveryZip,
+      deliveryLandmark,
+      classicChocolateChipQty = 0,
+      doubleChocolateQty = 0,
+      chocolateChipWalnutQty = 0,
+      cookiesCreamQty = 0,
+      kunafaChocolateQty = 0,
+      hazelnutFilledQty = 0,
+      lotusLavaQty = 0,
+      classicBundleQty = 0,
+      classicBundleFlavours = '',
+      premiumBundleQty = 0,
+      premiumBundleFlavours = '',
+      totalAmount = 0,
+      paymentProofUrl = 'created_by_admin',
+      paymentStatus = 'approved',
+      orderStatus = 'received',
+    } = body;
+
+    // Calculate stock deductions
+    const deductions = {
+      classic_chocolate_chip: classicChocolateChipQty,
+      double_chocolate: doubleChocolateQty,
+      chocolate_chip_walnut: chocolateChipWalnutQty,
+      cookies_cream: cookiesCreamQty,
+      kunafa_chocolate: kunafaChocolateQty,
+      hazelnut_filled: hazelnutFilledQty,
+      lotus_lava: lotusLavaQty
+    };
+
+    const mapFriendlyToKey = (name) => {
+      const n = name.trim().toLowerCase();
+      if (n.includes('walnut')) return 'chocolate_chip_walnut';
+      if (n.includes('classic') || n.includes('chip')) return 'classic_chocolate_chip';
+      if (n.includes('double')) return 'double_chocolate';
+      if (n.includes('cream')) return 'cookies_cream';
+      if (n.includes('kunafa')) return 'kunafa_chocolate';
+      if (n.includes('hazelnut')) return 'hazelnut_filled';
+      if (n.includes('lotus') || n.includes('lava')) return 'lotus_lava';
+      return null;
+    };
+
+    if (classicBundleQty > 0 && classicBundleFlavours) {
+      classicBundleFlavours.split(',').forEach(flv => {
+        const key = mapFriendlyToKey(flv);
+        if (key) deductions[key] = (deductions[key] || 0) + classicBundleQty;
+      });
+    }
+
+    if (premiumBundleQty > 0 && premiumBundleFlavours) {
+      premiumBundleFlavours.split(',').forEach(flv => {
+        const key = mapFriendlyToKey(flv);
+        if (key) deductions[key] = (deductions[key] || 0) + premiumBundleQty;
+      });
+    }
+
+    // Save order details in DB and deduct stock inside transaction
+    const { data: rpcResult, error: orderError } = await supabaseAdmin.rpc('place_order_with_stock', {
+      p_first_name: firstName,
+      p_last_name: lastName,
+      p_email: email,
+      p_phone: phone,
+      p_order_type: orderType,
+      p_delivery_street: orderType === 'delivery' ? deliveryStreet : null,
+      p_delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
+      p_delivery_city: orderType === 'delivery' ? deliveryCity : null,
+      p_delivery_state: orderType === 'delivery' ? deliveryState : null,
+      p_delivery_zip: orderType === 'delivery' ? deliveryZip : null,
+      p_delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
+      p_classic_chocolate_chip_qty: classicChocolateChipQty,
+      p_double_chocolate_qty: doubleChocolateQty,
+      p_chocolate_chip_walnut_qty: chocolateChipWalnutQty,
+      p_cookies_cream_qty: cookiesCreamQty,
+      p_kunafa_chocolate_qty: kunafaChocolateQty,
+      p_hazelnut_filled_qty: hazelnutFilledQty,
+      p_lotus_lava_qty: lotusLavaQty,
+      p_classic_bundle_qty: classicBundleQty,
+      p_classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
+      p_premium_bundle_qty: premiumBundleQty,
+      p_premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
+      p_total_amount: totalAmount,
+      p_payment_proof_url: paymentProofUrl,
+      p_deductions: deductions
+    });
+
+    if (orderError || !rpcResult || !rpcResult.success) {
+      const errMsg = orderError?.message || rpcResult?.error || 'Database error processing order.';
+      return NextResponse.json({ error: errMsg }, { status: 500 });
+    }
+
+    const orderId = rpcResult.order_id;
+    if (paymentStatus !== 'pending' || orderStatus !== 'received') {
+      await supabaseAdmin
+        .from('orders')
+        .update({
+          payment_status: paymentStatus,
+          order_status: orderStatus
+        })
+        .eq('id', orderId);
+    }
+
+    return NextResponse.json({ success: true, orderId });
+  } catch (error) {
+    console.error('Create Custom Order Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }
