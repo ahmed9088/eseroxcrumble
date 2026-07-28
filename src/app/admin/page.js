@@ -14,15 +14,15 @@ export default function AdminPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const lastRequestTime = useRef(0);
   const [stock, setStock] = useState({
-    classic_chocolate_chip: true,
-    double_chocolate: true,
-    chocolate_chip_walnut: true,
-    cookies_cream: true,
-    kunafa_chocolate: true,
-    hazelnut_filled: true,
-    lotus_lava: true,
-    classic_bundle: true,
-    premium_bundle: true,
+    classic_chocolate_chip: { available: 0, initial: 0, price: 580, is_active: false },
+    double_chocolate: { available: 0, initial: 0, price: 580, is_active: false },
+    chocolate_chip_walnut: { available: 0, initial: 0, price: 580, is_active: false },
+    cookies_cream: { available: 0, initial: 0, price: 620, is_active: false },
+    kunafa_chocolate: { available: 0, initial: 0, price: 620, is_active: false },
+    hazelnut_filled: { available: 0, initial: 0, price: 620, is_active: false },
+    lotus_lava: { available: 0, initial: 0, price: 620, is_active: false },
+    classic_bundle: { price: 2200, is_active: false },
+    premium_bundle: { price: 2400, is_active: false },
   });
 
   // Filters and search
@@ -127,25 +127,34 @@ export default function AdminPage() {
     }
   };
 
-  // Toggle Cookie Stock setting in DB
-  const handleStockToggle = async (item) => {
-    const updatedStock = { ...stock, [item]: !stock[item] };
-    setStock(updatedStock); // optimistic update
+  // Handle local changes to stock input fields
+  const handleStockFieldChange = (flavorKey, field, value) => {
+    setStock(prev => ({
+      ...prev,
+      [flavorKey]: {
+        ...prev[flavorKey],
+        [field]: value
+      }
+    }));
+  };
 
+  // Update a single cookie stock row in the database
+  const handleUpdateStockRow = async (flavorKey, availableStock, initialStock, price, isActive) => {
     try {
       const res = await fetch('/api/admin/stock', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stock: updatedStock }),
+        body: JSON.stringify({ flavorKey, availableStock, initialStock, price, isActive }),
       });
-      if (!res.ok) {
-        // revert on failure
-        setStock(stock);
-        alert('Failed to save stock toggle.');
+      if (res.ok) {
+        alert(`Successfully updated stock settings for ${flavorKey.replace(/_/g, ' ')}.`);
+        loadDashboardData(); // Refresh values from DB
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to update stock settings.');
       }
     } catch (err) {
-      setStock(stock);
-      alert('Network error saving stock status.');
+      alert('Network error saving stock changes.');
     }
   };
 
@@ -386,114 +395,95 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* Stock Toggle Configuration */}
+        {/* Stock Management Configuration Table */}
         <section className={styles.stockCard}>
           <h3 className={styles.stockHeader}>
-            <span>🛒 Live Cookie Stock Status (Toggles)</span>
-            <small style={{ fontSize: '0.8rem', color: '#a1887f', fontWeight: 'normal' }}>
-              Toggling off disables the item on the customer preorder form instantly.
+            <span>🛒 Live Inventory & Cookie Stock Status</span>
+            <small style={{ fontSize: '0.8rem', color: '#a1887f', fontWeight: 'normal', display: 'block', marginTop: '5px' }}>
+              Set remaining cookie quantities, initial targets, retail prices, and activation toggles.
             </small>
           </h3>
-          <div className={styles.stockGrid}>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Classic Chocolate Chip</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.classic_chocolate_chip}
-                  onChange={() => handleStockToggle('classic_chocolate_chip')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Double Chocolate</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.double_chocolate}
-                  onChange={() => handleStockToggle('double_chocolate')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Chocolate Chip Walnut</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.chocolate_chip_walnut}
-                  onChange={() => handleStockToggle('chocolate_chip_walnut')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Cookies & Cream</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.cookies_cream}
-                  onChange={() => handleStockToggle('cookies_cream')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Kunafa Chocolate</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.kunafa_chocolate}
-                  onChange={() => handleStockToggle('kunafa_chocolate')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Hazelnut Filled</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.hazelnut_filled}
-                  onChange={() => handleStockToggle('hazelnut_filled')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Lotus Lava</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.lotus_lava}
-                  onChange={() => handleStockToggle('lotus_lava')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Classic Bundle</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.classic_bundle}
-                  onChange={() => handleStockToggle('classic_bundle')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
-            <div className={styles.stockItem}>
-              <span className={styles.stockName}>Premium Bundle</span>
-              <label className={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={stock.premium_bundle}
-                  onChange={() => handleStockToggle('premium_bundle')}
-                />
-                <span className={styles.slider}></span>
-              </label>
-            </div>
+          <div className={styles.stockTableWrapper}>
+            <table className={styles.stockTable}>
+              <thead>
+                <tr>
+                  <th>Flavor / Item</th>
+                  <th>Price (PKR)</th>
+                  <th>Available Stock</th>
+                  <th>Initial Stock</th>
+                  <th>Active Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(stock).map(([key, item]) => {
+                  const isBundle = key === 'classic_bundle' || key === 'premium_bundle';
+                  const availableVal = item?.available ?? 0;
+                  const initialVal = item?.initial ?? 0;
+                  const priceVal = item?.price ?? 0;
+                  const activeVal = item?.is_active ?? false;
+
+                  return (
+                    <tr key={key}>
+                      <td style={{ fontWeight: 'bold', color: '#5d4037' }}>
+                        {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={priceVal}
+                          className={styles.stockInput}
+                          onChange={(e) => handleStockFieldChange(key, 'price', parseInt(e.target.value, 10) || 0)}
+                        />
+                      </td>
+                      <td>
+                        {!isBundle ? (
+                          <input
+                            type="number"
+                            value={availableVal}
+                            className={styles.stockInput}
+                            onChange={(e) => handleStockFieldChange(key, 'available', parseInt(e.target.value, 10) || 0)}
+                          />
+                        ) : (
+                          <span style={{ color: '#9e9e9e', fontSize: '0.85rem', fontStyle: 'italic' }}>N/A (Combo)</span>
+                        )}
+                      </td>
+                      <td>
+                        {!isBundle ? (
+                          <input
+                            type="number"
+                            value={initialVal}
+                            className={styles.stockInput}
+                            onChange={(e) => handleStockFieldChange(key, 'initial', parseInt(e.target.value, 10) || 0)}
+                          />
+                        ) : (
+                          <span style={{ color: '#9e9e9e', fontSize: '0.85rem', fontStyle: 'italic' }}>N/A (Combo)</span>
+                        )}
+                      </td>
+                      <td>
+                        <label className={styles.switch}>
+                          <input
+                            type="checkbox"
+                            checked={activeVal}
+                            onChange={() => handleStockFieldChange(key, 'is_active', !activeVal)}
+                          />
+                          <span className={styles.slider}></span>
+                        </label>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.saveStockBtn}
+                          onClick={() => handleUpdateStockRow(key, availableVal, initialVal, priceVal, activeVal)}
+                        >
+                          Save
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </section>
 

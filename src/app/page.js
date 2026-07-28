@@ -171,9 +171,129 @@ export default function PreorderPage() {
     setPhone(formatted);
   };
 
+  // Helper to extract counts of cookies in cart (both individual and inside bundles)
+  const getCartCookieCounts = (currentQuantities, classicChoices, premiumChoices) => {
+    const counts = {
+      classic_chocolate_chip: currentQuantities.classic_chocolate_chip || 0,
+      double_chocolate: currentQuantities.double_chocolate || 0,
+      chocolate_chip_walnut: currentQuantities.chocolate_chip_walnut || 0,
+      cookies_cream: currentQuantities.cookies_cream || 0,
+      kunafa_chocolate: currentQuantities.kunafa_chocolate || 0,
+      hazelnut_filled: currentQuantities.hazelnut_filled || 0,
+      lotus_lava: currentQuantities.lotus_lava || 0,
+    };
+
+    const mapFriendlyToKey = (name) => {
+      const n = name.trim().toLowerCase();
+      if (n.includes('walnut')) return 'chocolate_chip_walnut';
+      if (n.includes('classic') || n.includes('chip')) return 'classic_chocolate_chip';
+      if (n.includes('double')) return 'double_chocolate';
+      if (n.includes('cream')) return 'cookies_cream';
+      if (n.includes('kunafa')) return 'kunafa_chocolate';
+      if (n.includes('hazelnut')) return 'hazelnut_filled';
+      if (n.includes('lotus') || n.includes('lava')) return 'lotus_lava';
+      return null;
+    };
+
+    // Add classic bundles choices
+    const classicBundleQty = currentQuantities.classic_bundle || 0;
+    if (classicBundleQty > 0) {
+      Object.values(classicChoices).forEach(bundleObj => {
+        Object.values(bundleObj).forEach(flvFriendly => {
+          const key = mapFriendlyToKey(flvFriendly);
+          if (key) counts[key] += 1;
+        });
+      });
+    }
+
+    // Add premium bundles choices
+    const premiumBundleQty = currentQuantities.premium_bundle || 0;
+    if (premiumBundleQty > 0) {
+      Object.values(premiumChoices).forEach(bundleObj => {
+        Object.values(bundleObj).forEach(flvFriendly => {
+          const key = mapFriendlyToKey(flvFriendly);
+          if (key) counts[key] += 1;
+        });
+      });
+    }
+
+    return counts;
+  };
+
+  // Helper to check if a flavor is sold out (from db status)
+  const isSoldOut = (key) => {
+    const item = stockStatus[key];
+    if (key === 'classic_bundle') {
+      return !item || !item.is_active;
+    }
+    if (key === 'premium_bundle') {
+      return !item || !item.is_active;
+    }
+    return !item || !item.is_active || item.available <= 0;
+  };
+
   // Quantity Change Handlers
   const adjustQuantity = (item, diff) => {
-    if (!stockStatus[item] && diff > 0) return; // Prevent ordering sold-out
+    if (diff <= 0) {
+      setQuantities((prev) => ({ ...prev, [item]: Math.max(0, prev[item] + diff) }));
+      return;
+    }
+
+    // Prevent ordering if item is completely inactive
+    if (stockStatus[item] && !stockStatus[item].is_active) {
+      alert(`${item.replace('_', ' ').toUpperCase()} is currently unavailable!`);
+      return;
+    }
+
+    // Calculate current counts in the cart
+    const currentCounts = getCartCookieCounts(quantities, classicBundleChoices, premiumBundleChoices);
+
+    if (item === 'classic_bundle') {
+      if (!stockStatus.classic_bundle?.is_active) {
+        alert('Classic Bundle is currently unavailable!');
+        return;
+      }
+      const totalClassicAvailable = 
+        (stockStatus.classic_chocolate_chip?.available || 0) +
+        (stockStatus.double_chocolate?.available || 0) +
+        (stockStatus.chocolate_chip_walnut?.available || 0);
+      const totalClassicOrdered = 
+        currentCounts.classic_chocolate_chip +
+        currentCounts.double_chocolate +
+        currentCounts.chocolate_chip_walnut;
+      if (totalClassicOrdered + 4 > totalClassicAvailable) {
+        alert('Sorry, there is not enough classic cookie stock left to add another bundle!');
+        return;
+      }
+    } else if (item === 'premium_bundle') {
+      if (!stockStatus.premium_bundle?.is_active) {
+        alert('Premium Bundle is currently unavailable!');
+        return;
+      }
+      const totalPremiumAvailable = 
+        (stockStatus.cookies_cream?.available || 0) +
+        (stockStatus.kunafa_chocolate?.available || 0) +
+        (stockStatus.hazelnut_filled?.available || 0) +
+        (stockStatus.lotus_lava?.available || 0);
+      const totalPremiumOrdered = 
+        currentCounts.cookies_cream +
+        currentCounts.kunafa_chocolate +
+        currentCounts.hazelnut_filled +
+        currentCounts.lotus_lava;
+      if (totalPremiumOrdered + 4 > totalPremiumAvailable) {
+        alert('Sorry, there is not enough premium cookie stock left to add another bundle!');
+        return;
+      }
+    } else {
+      // Individual cookie stock check
+      const currentOrdered = currentCounts[item] || 0;
+      const available = stockStatus[item]?.available || 0;
+      if (currentOrdered + 1 > available) {
+        alert(`Sorry, only ${available} ${stockStatus[item]?.flavor_name || item.replace('_', ' ')} are available in total!`);
+        return;
+      }
+    }
+
     setQuantities((prev) => {
       const newVal = Math.max(0, prev[item] + diff);
       return { ...prev, [item]: newVal };
@@ -305,6 +425,42 @@ export default function PreorderPage() {
 
   // Handle Bundle Flavor Choice Update
   const updateBundleFlavor = (bundleType, bundleIdx, cookieIdx, flavor) => {
+    // Helper to map friendly name to key
+    const mapFriendlyToKey = (name) => {
+      const n = name.trim().toLowerCase();
+      if (n.includes('walnut')) return 'chocolate_chip_walnut';
+      if (n.includes('classic') || n.includes('chip')) return 'classic_chocolate_chip';
+      if (n.includes('double')) return 'double_chocolate';
+      if (n.includes('cream')) return 'cookies_cream';
+      if (n.includes('kunafa')) return 'kunafa_chocolate';
+      if (n.includes('hazelnut')) return 'hazelnut_filled';
+      if (n.includes('lotus') || n.includes('lava')) return 'lotus_lava';
+      return null;
+    };
+
+    const targetKey = mapFriendlyToKey(flavor);
+    if (targetKey) {
+      if (stockStatus[targetKey] && (!stockStatus[targetKey].is_active || stockStatus[targetKey].available <= 0)) {
+        alert(`Sorry, ${flavor} is currently sold out! Please select another flavor.`);
+        return;
+      }
+
+      // Compute tentative choices to verify if they exceed available stock
+      const tempChoices = bundleType === 'classic' 
+        ? { ...classicBundleChoices, [bundleIdx]: { ...classicBundleChoices[bundleIdx], [cookieIdx]: flavor } }
+        : classicBundleChoices;
+      const tempPremiumChoices = bundleType === 'premium'
+        ? { ...premiumBundleChoices, [bundleIdx]: { ...premiumBundleChoices[bundleIdx], [cookieIdx]: flavor } }
+        : premiumBundleChoices;
+
+      const currentCounts = getCartCookieCounts(quantities, tempChoices, tempPremiumChoices);
+      const available = stockStatus[targetKey]?.available || 0;
+      if (currentCounts[targetKey] > available) {
+        alert(`Sorry, you cannot select another ${flavor} as only ${available} are available in total stock!`);
+        return;
+      }
+    }
+
     if (bundleType === 'classic') {
       setClassicBundleChoices((prev) => {
         const choices = { ...prev };
@@ -756,209 +912,59 @@ export default function PreorderPage() {
               <span>🍪</span> Cookie Menu
             </h2>
             <div className={styles.menuGrid}>
-              {/* Item 1: Classic Chocolate Chip */}
-              <div className={`${styles.menuItem} ${!stockStatus.classic_chocolate_chip ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Classic Chocolate Chip</span>
-                  <span className={styles.cookiePrice}>PKR 580 each</span>
-                  {!stockStatus.classic_chocolate_chip && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.classic_chocolate_chip === 0}
-                    onClick={() => adjustQuantity('classic_chocolate_chip', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.classic_chocolate_chip}</span>
-                  <button
-                    type="button"
-                    disabled={!stockStatus.classic_chocolate_chip}
-                    onClick={() => adjustQuantity('classic_chocolate_chip', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* Item 2: Double Chocolate */}
-              <div className={`${styles.menuItem} ${!stockStatus.double_chocolate ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Double Chocolate</span>
-                  <span className={styles.cookiePrice}>PKR 580 each</span>
-                  {!stockStatus.double_chocolate && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.double_chocolate === 0}
-                    onClick={() => adjustQuantity('double_chocolate', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.double_chocolate}</span>
-                  <button
-                    type="button"
-                    disabled={!stockStatus.double_chocolate}
-                    onClick={() => adjustQuantity('double_chocolate', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* Item 3: Chocolate Chip Walnut */}
-              <div className={`${styles.menuItem} ${!stockStatus.chocolate_chip_walnut ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Chocolate Chip Walnut</span>
-                  <span className={styles.cookiePrice}>PKR 580 each</span>
-                  {!stockStatus.chocolate_chip_walnut && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.chocolate_chip_walnut === 0}
-                    onClick={() => adjustQuantity('chocolate_chip_walnut', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.chocolate_chip_walnut}</span>
-                  <button
-                    type="button"
-                    disabled={!stockStatus.chocolate_chip_walnut}
-                    onClick={() => adjustQuantity('chocolate_chip_walnut', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* Item 4: Cookies & Cream */}
-              <div className={`${styles.menuItem} ${!stockStatus.cookies_cream ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Cookies & Cream</span>
-                  <span className={styles.cookiePrice}>PKR 620 each</span>
-                  {!stockStatus.cookies_cream && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.cookies_cream === 0}
-                    onClick={() => adjustQuantity('cookies_cream', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.cookies_cream}</span>
-                  <button
-                    type="button"
-                    disabled={!stockStatus.cookies_cream}
-                    onClick={() => adjustQuantity('cookies_cream', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* Item 5: Kunafa Chocolate */}
-              <div className={`${styles.menuItem} ${!stockStatus.kunafa_chocolate ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Kunafa Chocolate</span>
-                  <span className={styles.cookiePrice}>PKR 620 each</span>
-                  {!stockStatus.kunafa_chocolate && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.kunafa_chocolate === 0}
-                    onClick={() => adjustQuantity('kunafa_chocolate', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.kunafa_chocolate}</span>
-                  <button
-                    type="button"
-                    disabled={!stockStatus.kunafa_chocolate}
-                    onClick={() => adjustQuantity('kunafa_chocolate', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* Item 6: Hazelnut Filled */}
-              <div className={`${styles.menuItem} ${!stockStatus.hazelnut_filled ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Hazelnut Filled</span>
-                  <span className={styles.cookiePrice}>PKR 620 each</span>
-                  {!stockStatus.hazelnut_filled && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.hazelnut_filled === 0}
-                    onClick={() => adjustQuantity('hazelnut_filled', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.hazelnut_filled}</span>
-                  <button
-                    type="button"
-                    disabled={!stockStatus.hazelnut_filled}
-                    onClick={() => adjustQuantity('hazelnut_filled', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* Item 7: Lotus Lava */}
-              <div className={`${styles.menuItem} ${!stockStatus.lotus_lava ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Lotus Lava</span>
-                  <span className={styles.cookiePrice}>PKR 620 each</span>
-                  {!stockStatus.lotus_lava && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.lotus_lava === 0}
-                    onClick={() => adjustQuantity('lotus_lava', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.lotus_lava}</span>
-                  <button
-                    type="button"
-                    disabled={!stockStatus.lotus_lava}
-                    onClick={() => adjustQuantity('lotus_lava', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
+              {[
+                { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: COOKIE_PRICES.classic_chocolate_chip },
+                { key: 'double_chocolate', name: 'Double Chocolate', price: COOKIE_PRICES.double_chocolate },
+                { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: COOKIE_PRICES.chocolate_chip_walnut },
+                { key: 'cookies_cream', name: 'Cookies & Cream', price: COOKIE_PRICES.cookies_cream },
+                { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: COOKIE_PRICES.kunafa_chocolate },
+                { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: COOKIE_PRICES.hazelnut_filled },
+                { key: 'lotus_lava', name: 'Lotus Lava', price: COOKIE_PRICES.lotus_lava },
+              ].map((item) => {
+                const soldOut = isSoldOut(item.key);
+                const stockVal = stockStatus[item.key]?.available ?? 0;
+                return (
+                  <div key={item.key} className={`${styles.menuItem} ${soldOut ? styles.menuItemSoldOut : ''}`}>
+                    <div className={styles.cookieInfo}>
+                      <span className={styles.cookieName}>{item.name}</span>
+                      <span className={styles.cookiePrice}>PKR {item.price} each</span>
+                      {stockStatus[item.key] && (
+                        <span style={{ fontSize: '0.8rem', color: soldOut ? '#e57373' : '#8d6e63', fontWeight: 600 }}>
+                          {soldOut ? 'Sold Out' : `${stockVal} remaining`}
+                        </span>
+                      )}
+                      {soldOut && <span className={styles.soldOutBadge}>SOLD OUT</span>}
+                    </div>
+                    <div className={styles.counter}>
+                      <button
+                        type="button"
+                        disabled={quantities[item.key] === 0}
+                        onClick={() => adjustQuantity(item.key, -1)}
+                        className={styles.counterBtn}
+                      >
+                        -
+                      </button>
+                      <span className={styles.counterVal}>{quantities[item.key]}</span>
+                      <button
+                        type="button"
+                        disabled={soldOut}
+                        onClick={() => adjustQuantity(item.key, 1)}
+                        className={styles.counterBtn}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
 
               {/* Item 8: Classic Bundle */}
-              <div className={`${styles.menuItem} ${!stockStatus.classic_bundle ? styles.menuItemSoldOut : ''}`}>
+              <div className={`${styles.menuItem} ${isSoldOut('classic_bundle') ? styles.menuItemSoldOut : ''}`}>
                 <div className={styles.cookieInfo}>
                   <span className={styles.cookieName}>Classic Bundle (pack of 4)</span>
-                  <span className={styles.cookiePrice}>PKR 2,200</span>
+                  <span className={styles.cookiePrice}>PKR {COOKIE_PRICES.classic_bundle}</span>
                   <span style={{ fontSize: '0.8rem', color: '#8d6e63' }}>Select 4 classic flavours below</span>
-                  {!stockStatus.classic_bundle && <span className={styles.soldOutBadge}>SOLD OUT</span>}
+                  {isSoldOut('classic_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
                 </div>
                 <div className={styles.counter}>
                   <button
@@ -972,7 +978,7 @@ export default function PreorderPage() {
                   <span className={styles.counterVal}>{quantities.classic_bundle}</span>
                   <button
                     type="button"
-                    disabled={!stockStatus.classic_bundle}
+                    disabled={isSoldOut('classic_bundle')}
                     onClick={() => adjustQuantity('classic_bundle', 1)}
                     className={styles.counterBtn}
                   >
@@ -1013,12 +1019,12 @@ export default function PreorderPage() {
               </div>
 
               {/* Item 9: Premium Bundle */}
-              <div className={`${styles.menuItem} ${!stockStatus.premium_bundle ? styles.menuItemSoldOut : ''}`}>
+              <div className={`${styles.menuItem} ${isSoldOut('premium_bundle') ? styles.menuItemSoldOut : ''}`}>
                 <div className={styles.cookieInfo}>
                   <span className={styles.cookieName}>Premium Bundle (pack of 4)</span>
-                  <span className={styles.cookiePrice}>PKR 2,400</span>
+                  <span className={styles.cookiePrice}>PKR {COOKIE_PRICES.premium_bundle}</span>
                   <span style={{ fontSize: '0.8rem', color: '#8d6e63' }}>Select 4 premium flavours below</span>
-                  {!stockStatus.premium_bundle && <span className={styles.soldOutBadge}>SOLD OUT</span>}
+                  {isSoldOut('premium_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
                 </div>
                 <div className={styles.counter}>
                   <button
@@ -1032,7 +1038,7 @@ export default function PreorderPage() {
                   <span className={styles.counterVal}>{quantities.premium_bundle}</span>
                   <button
                     type="button"
-                    disabled={!stockStatus.premium_bundle}
+                    disabled={isSoldOut('premium_bundle')}
                     onClick={() => adjustQuantity('premium_bundle', 1)}
                     className={styles.counterBtn}
                   >

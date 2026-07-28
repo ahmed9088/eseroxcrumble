@@ -69,24 +69,41 @@ export async function POST(request) {
       );
     }
 
-    // 3. Stock availability validation
-    const { data: stockSetting, error: stockError } = await supabaseAdmin
-      .from('settings')
-      .select('value')
-      .eq('key', 'cookie_stock')
-      .single();
+    // 3. Calculate stock deductions (combining individual and bundle cookie selections)
+    const deductions = {
+      classic_chocolate_chip: classicChocolateChipQty,
+      double_chocolate: doubleChocolateQty,
+      chocolate_chip_walnut: chocolateChipWalnutQty,
+      cookies_cream: cookiesCreamQty,
+      kunafa_chocolate: kunafaChocolateQty,
+      hazelnut_filled: hazelnutFilledQty,
+      lotus_lava: lotusLavaQty
+    };
 
-    if (!stockError && stockSetting && stockSetting.value) {
-      const stock = stockSetting.value;
-      if (classicChocolateChipQty > 0 && !stock.classic_chocolate_chip) return NextResponse.json({ error: 'Classic Chocolate Chip is sold out!' }, { status: 400 });
-      if (doubleChocolateQty > 0 && !stock.double_chocolate) return NextResponse.json({ error: 'Double Chocolate is sold out!' }, { status: 400 });
-      if (chocolateChipWalnutQty > 0 && !stock.chocolate_chip_walnut) return NextResponse.json({ error: 'Chocolate Chip Walnut is sold out!' }, { status: 400 });
-      if (cookiesCreamQty > 0 && !stock.cookies_cream) return NextResponse.json({ error: 'Cookies & Cream is sold out!' }, { status: 400 });
-      if (kunafaChocolateQty > 0 && !stock.kunafa_chocolate) return NextResponse.json({ error: 'Kunafa Chocolate is sold out!' }, { status: 400 });
-      if (hazelnutFilledQty > 0 && !stock.hazelnut_filled) return NextResponse.json({ error: 'Hazelnut Filled is sold out!' }, { status: 400 });
-      if (lotusLavaQty > 0 && !stock.lotus_lava) return NextResponse.json({ error: 'Lotus Lava is sold out!' }, { status: 400 });
-      if (classicBundleQty > 0 && !stock.classic_bundle) return NextResponse.json({ error: 'Classic Bundle is sold out!' }, { status: 400 });
-      if (premiumBundleQty > 0 && !stock.premium_bundle) return NextResponse.json({ error: 'Premium Bundle is sold out!' }, { status: 400 });
+    const mapFriendlyToKey = (name) => {
+      const n = name.trim().toLowerCase();
+      if (n.includes('walnut')) return 'chocolate_chip_walnut';
+      if (n.includes('classic') || n.includes('chip')) return 'classic_chocolate_chip';
+      if (n.includes('double')) return 'double_chocolate';
+      if (n.includes('cream')) return 'cookies_cream';
+      if (n.includes('kunafa')) return 'kunafa_chocolate';
+      if (n.includes('hazelnut')) return 'hazelnut_filled';
+      if (n.includes('lotus') || n.includes('lava')) return 'lotus_lava';
+      return null;
+    };
+
+    if (classicBundleQty > 0 && classicBundleFlavours) {
+      classicBundleFlavours.split(',').forEach(flv => {
+        const key = mapFriendlyToKey(flv);
+        if (key) deductions[key] = (deductions[key] || 0) + classicBundleQty;
+      });
+    }
+
+    if (premiumBundleQty > 0 && premiumBundleFlavours) {
+      premiumBundleFlavours.split(',').forEach(flv => {
+        const key = mapFriendlyToKey(flv);
+        if (key) deductions[key] = (deductions[key] || 0) + premiumBundleQty;
+      });
     }
 
     // 4. Upload payment proof to Supabase Storage
@@ -120,47 +137,45 @@ export async function POST(request) {
 
     const paymentProofUrl = publicUrlData.publicUrl;
 
-    // 5. Save order details in DB
-    const { data: orderData, error: orderError } = await supabaseAdmin
-      .from('orders')
-      .insert({
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        phone,
-        order_type: orderType,
-        delivery_street: orderType === 'delivery' ? deliveryStreet : null,
-        delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
-        delivery_city: orderType === 'delivery' ? deliveryCity : null,
-        delivery_state: orderType === 'delivery' ? deliveryState : null,
-        delivery_zip: orderType === 'delivery' ? deliveryZip : null,
-        delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
-        classic_chocolate_chip_qty: classicChocolateChipQty,
-        double_chocolate_qty: doubleChocolateQty,
-        chocolate_chip_walnut_qty: chocolateChipWalnutQty,
-        cookies_cream_qty: cookiesCreamQty,
-        kunafa_chocolate_qty: kunafaChocolateQty,
-        hazelnut_filled_qty: hazelnutFilledQty,
-        lotus_lava_qty: lotusLavaQty,
-        classic_bundle_qty: classicBundleQty,
-        classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
-        premium_bundle_qty: premiumBundleQty,
-        premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
-        total_amount: totalAmount,
-        payment_proof_url: paymentProofUrl,
-        payment_status: 'pending',
-        order_status: 'received',
-      })
-      .select()
-      .single();
+    // 5. Save order details in DB and deduct stock inside a transaction
+    const { data: rpcResult, error: orderError } = await supabaseAdmin.rpc('place_order_with_stock', {
+      p_first_name: firstName,
+      p_last_name: lastName,
+      p_email: email,
+      p_phone: phone,
+      p_order_type: orderType,
+      p_delivery_street: orderType === 'delivery' ? deliveryStreet : null,
+      p_delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
+      p_delivery_city: orderType === 'delivery' ? deliveryCity : null,
+      p_delivery_state: orderType === 'delivery' ? deliveryState : null,
+      p_delivery_zip: orderType === 'delivery' ? deliveryZip : null,
+      p_delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
+      p_classic_chocolate_chip_qty: classicChocolateChipQty,
+      p_double_chocolate_qty: doubleChocolateQty,
+      p_chocolate_chip_walnut_qty: chocolateChipWalnutQty,
+      p_cookies_cream_qty: cookiesCreamQty,
+      p_kunafa_chocolate_qty: kunafaChocolateQty,
+      p_hazelnut_filled_qty: hazelnutFilledQty,
+      p_lotus_lava_qty: lotusLavaQty,
+      p_classic_bundle_qty: classicBundleQty,
+      p_classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
+      p_premium_bundle_qty: premiumBundleQty,
+      p_premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
+      p_total_amount: totalAmount,
+      p_payment_proof_url: paymentProofUrl,
+      p_deductions: deductions
+    });
 
-    if (orderError) {
-      console.error('Order creation database error:', orderError);
+    if (orderError || !rpcResult || !rpcResult.success) {
+      const errMsg = orderError?.message || rpcResult?.error || 'Database error processing order.';
+      console.error('Order creation via RPC error:', orderError, rpcResult);
       return NextResponse.json(
-        { error: 'Failed to submit preorder. Database error.' },
+        { error: errMsg.includes('out of stock') ? errMsg : 'Failed to submit preorder. Stock validation failed or database error.' },
         { status: 500 }
       );
     }
+
+    const orderId = rpcResult.order_id;
 
     // 6. Delete the OTP verification row now that the preorder is successfully submitted
     await supabaseAdmin
@@ -169,7 +184,6 @@ export async function POST(request) {
       .eq('email', email);
 
     // 7. Send "Order Received" confirmation email to user
-    const orderId = orderData.id;
     const itemsList = [];
     if (classicChocolateChipQty > 0) itemsList.push(`<li>Classic Chocolate Chip x ${classicChocolateChipQty} (${classicChocolateChipQty * 580} PKR)</li>`);
     if (doubleChocolateQty > 0) itemsList.push(`<li>Double Chocolate x ${doubleChocolateQty} (${doubleChocolateQty * 580} PKR)</li>`);
@@ -196,8 +210,8 @@ export async function POST(request) {
           
           <div style="background-color: #ffffff; border: 1px solid #f0e2d5; border-radius: 8px; padding: 20px; margin: 20px 0;">
             <h3 style="color: #5d4037; margin-top: 0;">Order Summary</h3>
-            <p style="font-size: 14px; margin: 5px 0;"><strong>Order ID:</strong> #${orderId.substring(0, 8)}...</p>
-            <p style="font-size: 14px; margin: 5px 0;"><strong>Date:</strong> ${new Date(orderData.created_at).toLocaleDateString()}</p>
+            <p style="font-size: 14px; margin: 5px 0;"><strong>Order ID:</strong> #${orderId.substring(0, 8).toUpperCase()}</p>
+            <p style="font-size: 14px; margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <p style="font-size: 14px; margin: 5px 0;"><strong>Delivery Mode:</strong> ${orderType.toUpperCase()}</p>
             ${orderType === 'delivery' ? `<p style="font-size: 14px; margin: 5px 0;"><strong>Address:</strong> ${deliveryStreet}, ${deliveryCity}</p>` : ''}
             
@@ -227,7 +241,7 @@ export async function POST(request) {
       console.warn('Confirmation email sending warning:', mailError);
     }
 
-    return NextResponse.json({ success: true, orderId: orderData.id }, { status: 201 });
+    return NextResponse.json({ success: true, orderId: orderId }, { status: 201 });
   } catch (error) {
     console.error('Preorder Submit route error:', error);
     return NextResponse.json(

@@ -86,6 +86,71 @@ export async function PUT(request) {
       return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
     }
 
+    // Calculate Active states to see if we need to adjust stock
+    // An order is active (takes stock) if it is not rejected and not cancelled
+    const isOldActive = order.payment_status !== 'rejected' && order.order_status !== 'cancelled';
+    const newPayStatus = paymentStatus || order.payment_status;
+    const newOrdStatus = orderStatus || order.order_status;
+    const isNewActive = newPayStatus !== 'rejected' && newOrdStatus !== 'cancelled';
+
+    if (isOldActive && !isNewActive) {
+      // Transition from active to inactive: Restore stock
+      const deductions = getOrderCookieDeductions(order);
+      for (const [key, qty] of Object.entries(deductions)) {
+        if (qty > 0) {
+          const { data: stockRow } = await supabaseAdmin
+            .from('cookie_stock')
+            .select('available_stock')
+            .eq('flavor_key', key)
+            .single();
+          if (stockRow) {
+            await supabaseAdmin
+              .from('cookie_stock')
+              .update({ available_stock: stockRow.available_stock + qty })
+              .eq('flavor_key', key);
+          }
+        }
+      }
+    } else if (!isOldActive && isNewActive) {
+      // Transition from inactive to active: Deduct stock after verification
+      const deductions = getOrderCookieDeductions(order);
+      
+      // Verify stock availability first
+      for (const [key, qty] of Object.entries(deductions)) {
+        if (qty > 0) {
+          const { data: stockRow } = await supabaseAdmin
+            .from('cookie_stock')
+            .select('available_stock, flavor_name')
+            .eq('flavor_key', key)
+            .single();
+            
+          if (!stockRow || stockRow.available_stock < qty) {
+            return NextResponse.json(
+              { error: `Insufficient stock for ${stockRow?.flavor_name || key} to reactivate this order. (Only ${stockRow?.available_stock || 0} left)` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+
+      // Deduct stock
+      for (const [key, qty] of Object.entries(deductions)) {
+        if (qty > 0) {
+          const { data: stockRow } = await supabaseAdmin
+            .from('cookie_stock')
+            .select('available_stock')
+            .eq('flavor_key', key)
+            .single();
+          if (stockRow) {
+            await supabaseAdmin
+              .from('cookie_stock')
+              .update({ available_stock: Math.max(0, stockRow.available_stock - qty) })
+              .eq('flavor_key', key);
+          }
+        }
+      }
+    }
+
     const updates = {};
     if (paymentStatus) updates.payment_status = paymentStatus;
     if (orderStatus) updates.order_status = orderStatus;
@@ -109,7 +174,7 @@ export async function PUT(request) {
       if (paymentStatus === 'approved') {
         // Send payment approval confirmation
         await resend.emails.send({
-          from: 'Cafe Esero <noreply@resend.dev>',
+          from: 'Cafe Esero <noreply@itsahmed.tech>',
           to: order.email,
           subject: `✅ Preorder Confirmed! - Ref: #${refId}`,
           html: `
@@ -144,7 +209,7 @@ export async function PUT(request) {
       } else if (paymentStatus === 'rejected') {
         // Send payment rejection notification
         await resend.emails.send({
-          from: 'Cafe Esero <noreply@resend.dev>',
+          from: 'Cafe Esero <noreply@itsahmed.tech>',
           to: order.email,
           subject: `❌ Preorder Payment Declined - Ref: #${refId}`,
           html: `
@@ -188,4 +253,45 @@ export async function PUT(request) {
     console.error('Admin Orders PUT Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
+}
+
+// Helper function to extract individual cookie counts from an order (including bundles)
+function getOrderCookieDeductions(o) {
+  const deductions = {
+    classic_chocolate_chip: o.classic_chocolate_chip_qty || 0,
+    double_chocolate: o.double_chocolate_qty || 0,
+    chocolate_chip_walnut: o.chocolate_chip_walnut_qty || 0,
+    cookies_cream: o.cookies_cream_qty || 0,
+    kunafa_chocolate: o.kunafa_chocolate_qty || 0,
+    hazelnut_filled: o.hazelnut_filled_qty || 0,
+    lotus_lava: o.lotus_lava_qty || 0,
+  };
+
+  const mapFriendlyToKey = (name) => {
+    const n = name.trim().toLowerCase();
+    if (n.includes('walnut')) return 'chocolate_chip_walnut';
+    if (n.includes('classic') || n.includes('chip')) return 'classic_chocolate_chip';
+    if (n.includes('double')) return 'double_chocolate';
+    if (n.includes('cream')) return 'cookies_cream';
+    if (n.includes('kunafa')) return 'kunafa_chocolate';
+    if (n.includes('hazelnut')) return 'hazelnut_filled';
+    if (n.includes('lotus') || n.includes('lava')) return 'lotus_lava';
+    return null;
+  };
+
+  if (o.classic_bundle_qty > 0 && o.classic_bundle_flavours) {
+    o.classic_bundle_flavours.split(',').forEach((flv) => {
+      const key = mapFriendlyToKey(flv);
+      if (key) deductions[key] = (deductions[key] || 0) + o.classic_bundle_qty;
+    });
+  }
+
+  if (o.premium_bundle_qty > 0 && o.premium_bundle_flavours) {
+    o.premium_bundle_flavours.split(',').forEach((flv) => {
+      const key = mapFriendlyToKey(flv);
+      if (key) deductions[key] = (deductions[key] || 0) + o.premium_bundle_qty;
+    });
+  }
+
+  return deductions;
 }
