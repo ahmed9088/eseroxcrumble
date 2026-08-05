@@ -13,6 +13,30 @@ export async function POST(request) {
       );
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Check if email belongs to an existing verified customer (orders or verified OTP)
+    const { data: existingOrders } = await supabaseAdmin
+      .from('orders')
+      .select('id')
+      .ilike('email', cleanEmail)
+      .limit(1);
+
+    const { data: verifiedRows } = await supabaseAdmin
+      .from('email_verifications')
+      .select('id')
+      .ilike('email', cleanEmail)
+      .eq('verified', true)
+      .limit(1);
+
+    if ((existingOrders && existingOrders.length > 0) || (verifiedRows && verifiedRows.length > 0)) {
+      return NextResponse.json({
+        success: true,
+        isVerified: true,
+        message: 'You are a verified customer! Form unlocked.',
+      });
+    }
+
     // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiration

@@ -343,6 +343,41 @@ export default function PreorderPage() {
 
   const totalItems = Object.values(quantities).reduce((a, b) => a + b, 0);
 
+  // Auto-check returning customer email verification status
+  const checkEmailVerificationStatus = async (emailToTest) => {
+    if (!emailToTest || !emailToTest.includes('@') || !emailToTest.includes('.')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/otp/check?email=${encodeURIComponent(emailToTest)}`);
+      const data = await res.json();
+      if (res.ok && data.isVerified) {
+        setEmailVerified(true);
+        setOtpSent(false);
+        setOtpError('');
+        setOtpSuccess(data.isExistingCustomer 
+          ? '✓ You are a verified returning customer! Form unlocked.' 
+          : '✓ Your email is verified! Form unlocked.');
+      } else {
+        setEmailVerified(false);
+        setOtpSuccess('');
+      }
+    } catch (err) {
+      console.error('Failed to check email verification status:', err);
+    }
+  };
+
+  const handleEmailChange = (e) => {
+    const val = e.target.value;
+    setEmail(val);
+    if (val.includes('@') && val.includes('.')) {
+      checkEmailVerificationStatus(val);
+    } else {
+      setEmailVerified(false);
+      setOtpSuccess('');
+    }
+  };
+
   // Email Verification Trigger
   const sendVerificationCode = async () => {
     if (!email || !email.includes('@')) {
@@ -360,11 +395,16 @@ export default function PreorderPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setOtpSent(true);
-        const successMsg = data.devHint 
-          ? `Verification code sent. ${data.devHint}`
-          : 'Verification code sent to your email.';
-        setOtpSuccess(successMsg);
+        if (data.isVerified) {
+          setEmailVerified(true);
+          setOtpSuccess('✓ You are a verified returning customer! Form unlocked.');
+        } else {
+          setOtpSent(true);
+          const successMsg = data.devHint 
+            ? `Verification code sent. ${data.devHint}`
+            : 'Verification code sent to your email.';
+          setOtpSuccess(successMsg);
+        }
       } else {
         setOtpError(data.error || 'Failed to send OTP.');
       }
@@ -787,7 +827,8 @@ export default function PreorderPage() {
                   required
                   disabled={emailVerified}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleEmailChange}
+                  onBlur={() => checkEmailVerificationStatus(email)}
                   placeholder="name@example.com"
                   className={styles.input}
                   style={{ flex: 1 }}
@@ -840,8 +881,15 @@ export default function PreorderPage() {
               )}
 
               {emailVerified && (
-                <div className={styles.otpSuccessMessage}>
-                  <span>✓</span> Email verified successfully. Form unlocked.
+                <div className={styles.otpSuccessMessage} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <span>✓ {otpSuccess || 'Email verified. Form unlocked.'}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setEmailVerified(false); setOtpSuccess(''); setOtpSent(false); }}
+                    style={{ background: 'none', border: 'none', color: '#ff8a80', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline', fontWeight: 'bold' }}
+                  >
+                    Change Email
+                  </button>
                 </div>
               )}
               {otpSuccess && !emailVerified && (

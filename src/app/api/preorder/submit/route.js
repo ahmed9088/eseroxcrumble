@@ -78,15 +78,25 @@ export async function POST(request) {
     }
 
     // 2. Email verification check
-    // Query if this email was verified in the email_verifications table
-    const { data: verification, error: verifyError } = await supabaseAdmin
+    // Accept if email exists in orders table (returning customer) OR email_verifications table (verified = true)
+    const cleanEmail = email.trim().toLowerCase();
+
+    const { data: existingOrders } = await supabaseAdmin
+      .from('orders')
+      .select('id')
+      .ilike('email', cleanEmail)
+      .limit(1);
+
+    const { data: verification } = await supabaseAdmin
       .from('email_verifications')
-      .select('*')
-      .eq('email', email)
+      .select('id')
+      .ilike('email', cleanEmail)
       .eq('verified', true)
       .limit(1);
 
-    if (verifyError || !verification || verification.length === 0) {
+    const isVerifiedCustomer = (existingOrders && existingOrders.length > 0) || (verification && verification.length > 0);
+
+    if (!isVerifiedCustomer) {
       return NextResponse.json(
         { error: 'Email verification is required. Please verify your email first.' },
         { status: 400 }
@@ -133,8 +143,8 @@ export async function POST(request) {
     // 4. Upload payment proof to Supabase Storage
     const fileExtension = paymentProof.name.split('.').pop() || 'png';
     const timestamp = Date.now();
-    const cleanEmail = email.replace(/[^a-zA-Z0-9]/g, '_');
-    const fileName = `${timestamp}_${cleanEmail}.${fileExtension}`;
+    const safeEmailFilename = email.replace(/[^a-zA-Z0-9]/g, '_');
+    const fileName = `${timestamp}_${safeEmailFilename}.${fileExtension}`;
     const fileBuffer = Buffer.from(await paymentProof.arrayBuffer());
 
     // Upload to 'payment-proofs' bucket
@@ -201,11 +211,11 @@ export async function POST(request) {
 
     const orderId = rpcResult.order_id;
 
-    // 6. Delete the OTP verification row now that the preorder is successfully submitted
+    // 6. Ensure email verification record is kept so returning customers do not need OTP for future orders
     await supabaseAdmin
       .from('email_verifications')
-      .delete()
-      .eq('email', email);
+      .update({ verified: true })
+      .ilike('email', email);
 
     // 7. Send "Order Received" confirmation email to user
     const itemsList = [];
