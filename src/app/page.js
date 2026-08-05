@@ -772,7 +772,7 @@ export default function PreorderPage() {
                 className={styles.input}
                 id="phone"
               />
-              <p style={{ margin: '3px 0 0 0', fontSize: '0.75rem', color: '#8d6e63' }}>
+              <p style={{ margin: '3px 0 0 0', fontSize: '0.75rem', color: '#b3c4e6' }}>
                 Format: (000) 000-00000.
               </p>
             </div>
@@ -812,7 +812,7 @@ export default function PreorderPage() {
 
               {otpSent && !emailVerified && (
                 <div className={styles.otpContainer}>
-                  <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#5d4037' }}>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#f5cf73' }}>
                     Enter the 6-digit OTP code sent to your email:
                   </p>
                   <div className={styles.otpRow}>
@@ -845,7 +845,7 @@ export default function PreorderPage() {
                 </div>
               )}
               {otpSuccess && !emailVerified && (
-                <p style={{ fontSize: '0.8rem', color: '#2e7d32', margin: '5px 0 0 0' }}>{otpSuccess}</p>
+                <p style={{ fontSize: '0.8rem', color: '#69f0ae', margin: '5px 0 0 0' }}>{otpSuccess}</p>
               )}
             </div>
           </div>
@@ -858,11 +858,11 @@ export default function PreorderPage() {
 
             {!orderSettings.isPickupEnabled && !orderSettings.isDeliveryEnabled && (
               <div style={{
-                backgroundColor: 'rgba(211, 47, 47, 0.1)',
-                border: '1px solid #ef5350',
+                backgroundColor: 'rgba(211, 47, 47, 0.25)',
+                border: '1px solid #ff5252',
                 borderRadius: '8px',
                 padding: '12px 16px',
-                color: '#c62828',
+                color: '#ff8a80',
                 fontSize: '0.85rem',
                 fontWeight: 'bold',
                 marginBottom: '15px',
@@ -875,13 +875,13 @@ export default function PreorderPage() {
             <div className={styles.typeContainer}>
               <div
                 className={styles.typeCard}
-                style={{ opacity: 0.6, cursor: 'not-allowed', borderColor: '#e0d0c0', backgroundColor: '#faf6f0' }}
+                style={{ opacity: 0.6, cursor: 'not-allowed', borderColor: 'rgba(255, 255, 255, 0.1)', backgroundColor: 'rgba(10, 20, 38, 0.5)' }}
                 title="Dine-in preorders can only be placed at the cafe counter."
                 id="type-dine-in"
               >
                 <span className={styles.typeIcon}>☕</span>
-                <span className={styles.typeName} style={{ textDecoration: 'line-through', color: '#8d6e63' }}>Dine-in</span>
-                <span style={{ fontSize: '0.65rem', color: '#c2185b', fontWeight: 'bold', marginTop: '3px' }}>Counter Only</span>
+                <span className={styles.typeName} style={{ textDecoration: 'line-through', color: '#b3c4e6' }}>Dine-in</span>
+                <span style={{ fontSize: '0.65rem', color: '#ff4081', fontWeight: 'bold', marginTop: '3px' }}>Counter Only</span>
               </div>
 
               {/* Takeaway / Pickup Card */}
@@ -890,8 +890,8 @@ export default function PreorderPage() {
                 style={!orderSettings.isPickupEnabled ? {
                   opacity: 0.5,
                   cursor: 'not-allowed',
-                  borderColor: '#e0d0c0',
-                  backgroundColor: '#faf6f0'
+                  borderColor: 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: 'rgba(10, 20, 38, 0.5)'
                 } : {}}
                 onClick={() => {
                   if (orderSettings.isPickupEnabled) {
@@ -903,9 +903,9 @@ export default function PreorderPage() {
                 id="type-takeaway"
               >
                 <span className={styles.typeIcon}>🛍️</span>
-                <span className={styles.typeName} style={!orderSettings.isPickupEnabled ? { textDecoration: 'line-through', color: '#8d6e63' } : {}}>Takeaway</span>
+                <span className={styles.typeName} style={!orderSettings.isPickupEnabled ? { textDecoration: 'line-through', color: '#b3c4e6' } : {}}>Takeaway</span>
                 {!orderSettings.isPickupEnabled && (
-                  <span style={{ fontSize: '0.65rem', color: '#d32f2f', fontWeight: 'bold', marginTop: '3px' }}>Closed</span>
+                  <span style={{ fontSize: '0.65rem', color: '#ff5252', fontWeight: 'bold', marginTop: '3px' }}>Closed</span>
                 )}
               </div>
 
@@ -915,8 +915,8 @@ export default function PreorderPage() {
                 style={!orderSettings.isDeliveryEnabled ? {
                   opacity: 0.5,
                   cursor: 'not-allowed',
-                  borderColor: '#e0d0c0',
-                  backgroundColor: '#faf6f0'
+                  borderColor: 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: 'rgba(10, 20, 38, 0.5)'
                 } : {}}
                 onClick={() => {
                   if (orderSettings.isDeliveryEnabled) {
@@ -928,20 +928,20 @@ export default function PreorderPage() {
                 id="type-delivery"
               >
                 <span className={styles.typeIcon}>🚚</span>
-                <span className={styles.typeName} style={!orderSettings.isDeliveryEnabled ? { textDecoration: 'line-through', color: '#8d6e63' } : {}}>Delivery</span>
+                <span className={styles.typeName} style={!orderSettings.isDeliveryEnabled ? { textDecoration: 'line-through', color: '#b3c4e6' } : {}}>Delivery</span>
                 {!orderSettings.isDeliveryEnabled && (
-                  <span style={{ fontSize: '0.65rem', color: '#d32f2f', fontWeight: 'bold', marginTop: '3px' }}>Closed</span>
+                  <span style={{ fontSize: '0.65rem', color: '#ff5252', fontWeight: 'bold', marginTop: '3px' }}>Closed</span>
                 )}
               </div>
             </div>
 
-            <p style={{ margin: '12px 0 0 0', fontSize: '0.8rem', color: '#8d6e63', fontStyle: 'italic' }}>
+            <p style={{ margin: '12px 0 0 0', fontSize: '0.8rem', color: '#b3c4e6', fontStyle: 'italic' }}>
               ℹ Dine-in orders can only be placed directly at the cafe counter. Online preorders are restricted to Takeaway and Delivery (standard delivery fee is PKR 300).
             </p>
 
             {orderType === 'delivery' && (
               <div style={{ marginTop: '25px', animation: 'slideDown 0.4s ease' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 15px 0', color: '#5d4037' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 15px 0', color: '#f5cf73' }}>
                   Complete Delivery Address
                 </h3>
                 <div className={styles.group}>
@@ -1050,7 +1050,7 @@ export default function PreorderPage() {
                       <span className={styles.cookieName}>{item.name}</span>
                       <span className={styles.cookiePrice}>PKR {item.price} each</span>
                       {stockStatus[item.key] && (
-                        <span style={{ fontSize: '0.8rem', color: soldOut ? '#e57373' : '#8d6e63', fontWeight: 600 }}>
+                        <span style={{ fontSize: '0.8rem', color: soldOut ? '#ff5252' : '#b3c4e6', fontWeight: 600 }}>
                           {soldOut ? 'Sold Out' : `${stockVal} remaining`}
                         </span>
                       )}
@@ -1084,7 +1084,7 @@ export default function PreorderPage() {
                 <div className={styles.cookieInfo}>
                   <span className={styles.cookieName}>Classic Bundle (pack of 4)</span>
                   <span className={styles.cookiePrice}>PKR {COOKIE_PRICES.classic_bundle}</span>
-                  <span style={{ fontSize: '0.8rem', color: '#8d6e63' }}>Select 4 classic flavours below</span>
+                  <span style={{ fontSize: '0.8rem', color: '#b3c4e6' }}>Select 4 classic flavours below</span>
                   {isSoldOut('classic_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
                 </div>
                 <div className={styles.counter}>
@@ -1112,7 +1112,7 @@ export default function PreorderPage() {
                     <p className={styles.bundleHeading}>Select Classic Bundle Flavours</p>
                     {Array.from({ length: quantities.classic_bundle }).map((_, bIdx) => (
                       <div key={bIdx} style={{ marginBottom: '12px' }}>
-                        <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#8d6e63' }}>
+                        <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#f5cf73' }}>
                           Pack #{bIdx + 1}
                         </p>
                         <div className={styles.bundleGrid}>
@@ -1144,7 +1144,7 @@ export default function PreorderPage() {
                 <div className={styles.cookieInfo}>
                   <span className={styles.cookieName}>Premium Bundle (pack of 4)</span>
                   <span className={styles.cookiePrice}>PKR {COOKIE_PRICES.premium_bundle}</span>
-                  <span style={{ fontSize: '0.8rem', color: '#8d6e63' }}>Select 4 premium flavours below</span>
+                  <span style={{ fontSize: '0.8rem', color: '#b3c4e6' }}>Select 4 premium flavours below</span>
                   {isSoldOut('premium_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
                 </div>
                 <div className={styles.counter}>
@@ -1172,7 +1172,7 @@ export default function PreorderPage() {
                     <p className={styles.bundleHeading}>Select Premium Bundle Flavours</p>
                     {Array.from({ length: quantities.premium_bundle }).map((_, bIdx) => (
                       <div key={bIdx} style={{ marginBottom: '12px' }}>
-                        <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#8d6e63' }}>
+                        <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#f5cf73' }}>
                           Pack #{bIdx + 1}
                         </p>
                         <div className={styles.bundleGrid}>
@@ -1206,7 +1206,7 @@ export default function PreorderPage() {
             <h2 className={styles.sectionTitle}>
               <span>💳</span> Payment Instructions
             </h2>
-            <p style={{ fontSize: '0.9rem', margin: '0 0 15px 0', color: '#5d4037', lineHeight: '1.5' }}>
+            <p style={{ fontSize: '0.9rem', margin: '0 0 15px 0', color: '#b3c4e6', lineHeight: '1.5' }}>
               Please transfer the exact preorder amount to the bank account below. Copy the details easily by clicking the buttons.
             </p>
 
@@ -1247,7 +1247,7 @@ export default function PreorderPage() {
               </div>
             </div>
 
-            <p style={{ fontSize: '0.9rem', fontWeight: 'bold', margin: '0 0 10px 0', color: '#3e2723' }}>
+            <p style={{ fontSize: '0.9rem', fontWeight: 'bold', margin: '0 0 10px 0', color: '#ffffff' }}>
               Note: Please transfer the exact order amount and upload your payment proof below.*
             </p>
 
@@ -1307,8 +1307,8 @@ export default function PreorderPage() {
           <div className={styles.summaryBox}>
             {/* Selected Items Breakdown */}
             {totalItems > 0 && (
-              <div style={{ marginBottom: '15px', borderBottom: '1px dashed #e6d3c0', paddingBottom: '10px' }}>
-                <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 700, color: '#5d4037' }}>
+              <div style={{ marginBottom: '15px', borderBottom: '1px dashed rgba(226, 174, 70, 0.3)', paddingBottom: '10px' }}>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 700, color: '#f5cf73' }}>
                   Selected Cookies Breakdown:
                 </p>
                 {Object.entries(quantities).map(([item, qty]) => {
@@ -1325,9 +1325,9 @@ export default function PreorderPage() {
 
                   const itemTotal = qty * COOKIE_PRICES[item];
                   return (
-                    <div key={item} className={styles.summaryRow} style={{ fontSize: '0.85rem', color: '#6d4c41', margin: '3px 0' }}>
+                    <div key={item} className={styles.summaryRow} style={{ fontSize: '0.85rem', color: '#d1ddf7', margin: '3px 0' }}>
                       <span>
-                        • {displayName} <strong style={{ color: '#3e2723' }}>x{qty}</strong>
+                        • {displayName} <strong style={{ color: '#ffffff' }}>x{qty}</strong>
                       </span>
                       <span>PKR {itemTotal.toLocaleString()}</span>
                     </div>
