@@ -87,6 +87,12 @@ export default function AdminPage() {
   // Announcement / Main Page Updates
   const [announcementForm, setAnnouncementForm] = useState({ text: '', isActive: false });
 
+  // Fulfillment & Order Options Settings (Delivery & Pickup)
+  const [orderSettings, setOrderSettings] = useState({
+    isDeliveryEnabled: true,
+    isPickupEnabled: true,
+  });
+
   // Check Authentication Status on mount
   useEffect(() => {
     async function checkAuth() {
@@ -140,6 +146,18 @@ export default function AdminPage() {
           text: annData.text || '',
           isActive: annData.isActive || false
         });
+      }
+
+      // Fetch delivery & pickup availability settings
+      const setRes = await fetch('/api/order-settings');
+      if (setRes.ok) {
+        const setData = await setRes.json();
+        if (requestId === lastRequestTime.current) {
+          setOrderSettings({
+            isDeliveryEnabled: setData.isDeliveryEnabled ?? true,
+            isPickupEnabled: setData.isPickupEnabled ?? true,
+          });
+        }
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
@@ -515,6 +533,25 @@ export default function AdminPage() {
     }
   };
 
+  // Save/Update delivery and pickup availability toggles
+  const handleUpdateOrderSettings = async () => {
+    try {
+      const res = await fetch('/api/order-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderSettings),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Fulfillment & Order options updated successfully!');
+      } else {
+        alert(data.error || 'Failed to update order settings.');
+      }
+    } catch (err) {
+      alert('Error updating order settings.');
+    }
+  };
+
   // Export filtered orders to CSV
   const handleExportCSV = () => {
     if (orders.length === 0) return;
@@ -852,6 +889,83 @@ export default function AdminPage() {
                 onClick={handleUpdateAnnouncement}
               >
                 Save Announcement
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Fulfillment & Order Options Controls */}
+        <section className={styles.stockCard} style={{ marginTop: '25px' }}>
+          <h3 className={styles.stockHeader}>
+            <span>🛵 Delivery & Pickup Fulfillment Controls</span>
+            <small style={{ fontSize: '0.8rem', color: '#a1887f', fontWeight: 'normal', display: 'block', marginTop: '5px' }}>
+              Turn Delivery or Pickup / Takeaway service ON or OFF for customer preorders.
+            </small>
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+              <div style={{
+                display: 'flex',
+                justify: 'space-between',
+                alignItems: 'center',
+                padding: '15px 20px',
+                background: '#130c08',
+                borderRadius: '8px',
+                border: '1px solid rgba(200,162,122,0.2)'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fff' }}>🚚 Delivery Service</div>
+                  <div style={{ fontSize: '0.75rem', color: orderSettings.isDeliveryEnabled ? '#81c784' : '#e57373', marginTop: '3px' }}>
+                    {orderSettings.isDeliveryEnabled ? 'Status: Active (ON)' : 'Status: Closed (OFF)'}
+                  </div>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={orderSettings.isDeliveryEnabled}
+                    onChange={(e) => setOrderSettings(prev => ({ ...prev, isDeliveryEnabled: e.target.checked }))}
+                    id="admin-toggle-delivery"
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                justify: 'space-between',
+                alignItems: 'center',
+                padding: '15px 20px',
+                background: '#130c08',
+                borderRadius: '8px',
+                border: '1px solid rgba(200,162,122,0.2)'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fff' }}>🛍️ Pickup / Takeaway Service</div>
+                  <div style={{ fontSize: '0.75rem', color: orderSettings.isPickupEnabled ? '#81c784' : '#e57373', marginTop: '3px' }}>
+                    {orderSettings.isPickupEnabled ? 'Status: Active (ON)' : 'Status: Closed (OFF)'}
+                  </div>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={orderSettings.isPickupEnabled}
+                    onChange={(e) => setOrderSettings(prev => ({ ...prev, isPickupEnabled: e.target.checked }))}
+                    id="admin-toggle-pickup"
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+              <button
+                type="button"
+                className={styles.saveStockBtn}
+                style={{ padding: '0 25px', height: '40px' }}
+                onClick={handleUpdateOrderSettings}
+                id="admin-save-fulfillment-btn"
+              >
+                Save Fulfillment Settings
               </button>
             </div>
           </div>

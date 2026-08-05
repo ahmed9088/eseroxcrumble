@@ -95,6 +95,7 @@ export default function PreorderPage() {
   const [successOrderId, setSuccessOrderId] = useState('');
   const [copiedField, setCopiedField] = useState('');
   const [announcement, setAnnouncement] = useState({ text: '', isActive: false });
+  const [orderSettings, setOrderSettings] = useState({ isDeliveryEnabled: true, isPickupEnabled: true });
 
   // Fetch Stock Status and Announcement on Mount
   useEffect(() => {
@@ -117,6 +118,20 @@ export default function PreorderPage() {
         }
       } catch (err) {
         console.error('Failed to load announcement settings', err);
+      }
+
+      try {
+        const res = await fetch('/api/order-settings');
+        if (res.ok) {
+          const data = await res.json();
+          setOrderSettings(data);
+          // If takeaway is disabled but delivery is enabled, default to delivery
+          if (!data.isPickupEnabled && data.isDeliveryEnabled) {
+            setOrderType('delivery');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load order settings', err);
       }
     }
     loadData();
@@ -492,6 +507,16 @@ export default function PreorderPage() {
     e.preventDefault();
     setErrorMsg('');
 
+    if (orderType === 'delivery' && !orderSettings.isDeliveryEnabled) {
+      setErrorMsg('Delivery preorders are currently closed by admin.');
+      return;
+    }
+
+    if (orderType === 'takeaway' && !orderSettings.isPickupEnabled) {
+      setErrorMsg('Pickup / Takeaway preorders are currently closed by admin.');
+      return;
+    }
+
     if (!emailVerified) {
       setErrorMsg('Please verify your email address first.');
       return;
@@ -818,6 +843,23 @@ export default function PreorderPage() {
             <h2 className={styles.sectionTitle}>
               <span>🛵</span> Order Type
             </h2>
+
+            {!orderSettings.isPickupEnabled && !orderSettings.isDeliveryEnabled && (
+              <div style={{
+                backgroundColor: 'rgba(211, 47, 47, 0.1)',
+                border: '1px solid #ef5350',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                color: '#c62828',
+                fontSize: '0.85rem',
+                fontWeight: 'bold',
+                marginBottom: '15px',
+                textAlign: 'center'
+              }}>
+                ⚠️ Online preorders are currently closed by admin for both Delivery and Pickup.
+              </div>
+            )}
+
             <div className={styles.typeContainer}>
               <div
                 className={styles.typeCard}
@@ -829,21 +871,55 @@ export default function PreorderPage() {
                 <span className={styles.typeName} style={{ textDecoration: 'line-through', color: '#8d6e63' }}>Dine-in</span>
                 <span style={{ fontSize: '0.65rem', color: '#c2185b', fontWeight: 'bold', marginTop: '3px' }}>Counter Only</span>
               </div>
+
+              {/* Takeaway / Pickup Card */}
               <div
-                className={`${styles.typeCard} ${orderType === 'takeaway' ? styles.typeCardActive : ''}`}
-                onClick={() => setOrderType('takeaway')}
+                className={`${styles.typeCard} ${orderType === 'takeaway' && orderSettings.isPickupEnabled ? styles.typeCardActive : ''}`}
+                style={!orderSettings.isPickupEnabled ? {
+                  opacity: 0.5,
+                  cursor: 'not-allowed',
+                  borderColor: '#e0d0c0',
+                  backgroundColor: '#faf6f0'
+                } : {}}
+                onClick={() => {
+                  if (orderSettings.isPickupEnabled) {
+                    setOrderType('takeaway');
+                  } else {
+                    alert('Pickup / Takeaway preorders are currently closed by admin.');
+                  }
+                }}
                 id="type-takeaway"
               >
                 <span className={styles.typeIcon}>🛍️</span>
-                <span className={styles.typeName}>Takeaway</span>
+                <span className={styles.typeName} style={!orderSettings.isPickupEnabled ? { textDecoration: 'line-through', color: '#8d6e63' } : {}}>Takeaway</span>
+                {!orderSettings.isPickupEnabled && (
+                  <span style={{ fontSize: '0.65rem', color: '#d32f2f', fontWeight: 'bold', marginTop: '3px' }}>Closed</span>
+                )}
               </div>
+
+              {/* Delivery Card */}
               <div
-                className={`${styles.typeCard} ${orderType === 'delivery' ? styles.typeCardActive : ''}`}
-                onClick={() => setOrderType('delivery')}
+                className={`${styles.typeCard} ${orderType === 'delivery' && orderSettings.isDeliveryEnabled ? styles.typeCardActive : ''}`}
+                style={!orderSettings.isDeliveryEnabled ? {
+                  opacity: 0.5,
+                  cursor: 'not-allowed',
+                  borderColor: '#e0d0c0',
+                  backgroundColor: '#faf6f0'
+                } : {}}
+                onClick={() => {
+                  if (orderSettings.isDeliveryEnabled) {
+                    setOrderType('delivery');
+                  } else {
+                    alert('Delivery preorders are currently closed by admin.');
+                  }
+                }}
                 id="type-delivery"
               >
                 <span className={styles.typeIcon}>🚚</span>
-                <span className={styles.typeName}>Delivery</span>
+                <span className={styles.typeName} style={!orderSettings.isDeliveryEnabled ? { textDecoration: 'line-through', color: '#8d6e63' } : {}}>Delivery</span>
+                {!orderSettings.isDeliveryEnabled && (
+                  <span style={{ fontSize: '0.65rem', color: '#d32f2f', fontWeight: 'bold', marginTop: '3px' }}>Closed</span>
+                )}
               </div>
             </div>
 

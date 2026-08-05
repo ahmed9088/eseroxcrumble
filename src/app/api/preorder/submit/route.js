@@ -53,6 +53,30 @@ export async function POST(request) {
       );
     }
 
+    // Check if selected order type (delivery / takeaway) is currently allowed by admin
+    const { data: settingsRow } = await supabaseAdmin
+      .from('settings')
+      .select('value')
+      .eq('key', 'order_settings')
+      .single();
+
+    const isDeliveryEnabled = settingsRow?.value?.isDeliveryEnabled ?? true;
+    const isPickupEnabled = settingsRow?.value?.isPickupEnabled ?? true;
+
+    if (orderType === 'delivery' && !isDeliveryEnabled) {
+      return NextResponse.json(
+        { error: 'Delivery preorders are currently closed by admin. Please select Takeaway or try again later.' },
+        { status: 400 }
+      );
+    }
+
+    if (orderType === 'takeaway' && !isPickupEnabled) {
+      return NextResponse.json(
+        { error: 'Pickup / Takeaway preorders are currently closed by admin. Please select Delivery or try again later.' },
+        { status: 400 }
+      );
+    }
+
     // 2. Email verification check
     // Query if this email was verified in the email_verifications table
     const { data: verification, error: verifyError } = await supabaseAdmin
