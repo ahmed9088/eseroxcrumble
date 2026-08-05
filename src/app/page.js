@@ -694,7 +694,6 @@ export default function PreorderPage() {
               <img src="/crumble-logo.png" alt="Crumble Cookie Logo" className={styles.logoCrumble} />
             </div>
           </div>
-          <span className={styles.badge}>LIMITED COLLABORATION</span>
           <h1 className={styles.title}>Esero ✕ Crumble Cookie</h1>
           <p className={styles.subtitle}>
             Reserve your favourite Crumble cookies before they're sold out—limited stock available.
