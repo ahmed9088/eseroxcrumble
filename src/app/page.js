@@ -602,7 +602,11 @@ export default function PreorderPage() {
       <div className={styles.container}>
         <div className={styles.inner}>
           <div className={styles.successCard}>
-            <span className={styles.successIcon}>🍪</span>
+            <div className={styles.brandLogosWrapperSmall}>
+              <img src="/esero-logo.jpg" alt="Cafe Esero Logo" className={styles.logoEseroSmall} />
+              <span className={styles.logoBadgeXSmall}>✕</span>
+              <img src="/crumble-logo.png" alt="Crumble Cookie Logo" className={styles.logoCrumbleSmall} />
+            </div>
             <h1 className={styles.successTitle}>Preorder Placed!</h1>
             <p className={styles.successText}>
               Thank you, <strong>{firstName}</strong>! Your preorder has been successfully submitted for payment verification. A confirmation email has been sent to <strong>{email}</strong>.
@@ -681,8 +685,17 @@ export default function PreorderPage() {
     <div className={styles.container}>
       <div className={styles.inner}>
         <header className={styles.header}>
-          <span className={styles.badge}>Cafe Esero</span>
-          <h1 className={styles.title}>🍪 Esero × Crumble Cookie Preorder</h1>
+          <div className={styles.brandLogosWrapper}>
+            <div className={styles.logoBadgeContainer}>
+              <img src="/esero-logo.jpg" alt="Cafe Esero Logo" className={styles.logoEsero} />
+            </div>
+            <span className={styles.logoBadgeX}>✕</span>
+            <div className={styles.logoBadgeContainer}>
+              <img src="/crumble-logo.png" alt="Crumble Cookie Logo" className={styles.logoCrumble} />
+            </div>
+          </div>
+          <span className={styles.badge}>LIMITED COLLABORATION</span>
+          <h1 className={styles.title}>Esero ✕ Crumble Cookie</h1>
           <p className={styles.subtitle}>
             Reserve your favourite Crumble cookies before they're sold out—limited stock available.
           </p>
