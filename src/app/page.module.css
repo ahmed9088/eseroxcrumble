@@ -828,3 +828,175 @@
     transform: scale(1);
   }
 }
+
+/* Deep Responsive Media Queries Across All Device Breakpoints */
+
+/* Tablet Breakpoint (max-width: 768px) */
+@media (max-width: 768px) {
+  .container {
+    padding: 35px 16px;
+  }
+  
+  .card {
+    padding: 34px 26px;
+    border-radius: 20px;
+  }
+
+  .title {
+    font-size: 2.2rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+  }
+
+  .logoEsero {
+    width: 60px;
+    height: 60px;
+  }
+
+  .logoCrumble {
+    height: 34px;
+  }
+
+  .bankRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .bankValue {
+    width: 100%;
+    justify-content: space-between;
+    word-break: break-all;
+  }
+}
+
+/* Mobile Breakpoint (max-width: 580px) */
+@media (max-width: 580px) {
+  .container {
+    padding: 24px 12px;
+  }
+
+  .header {
+    margin-bottom: 30px;
+  }
+
+  .brandLogosWrapper {
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .logoEsero {
+    width: 54px;
+    height: 54px;
+  }
+
+  .logoCrumble {
+    height: 30px;
+    padding: 0 8px;
+  }
+
+  .logoBadgeX {
+    font-size: 1rem;
+  }
+
+  .title {
+    font-size: 1.8rem;
+    line-height: 1.25;
+  }
+
+  .subtitle {
+    font-size: 0.92rem;
+  }
+
+  .card {
+    padding: 24px 16px;
+    border-radius: 18px;
+  }
+
+  .section {
+    margin-bottom: 28px;
+    padding-bottom: 28px;
+  }
+
+  .sectionTitle {
+    font-size: 1.15rem;
+    gap: 8px;
+  }
+
+  .emailInputContainer {
+    flex-direction: column;
+  }
+
+  .verifyBtn {
+    width: 100%;
+    padding: 12px;
+  }
+
+  .typeContainer {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .menuItem {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px 16px;
+  }
+
+  .counter {
+    align-self: flex-start;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .bundleGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .uploadArea {
+    padding: 22px 14px;
+  }
+
+  .uploadPreview {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .fileMeta {
+    text-align: center;
+  }
+
+  .fileName {
+    max-width: 220px;
+  }
+
+  .successCard {
+    padding: 35px 20px;
+    border-radius: 18px;
+  }
+
+  .successTitle {
+    font-size: 1.75rem;
+  }
+
+  .refVal {
+    font-size: 1.1rem;
+  }
+}
+
+/* Extra Small Phones (max-width: 380px) */
+@media (max-width: 380px) {
+  .title {
+    font-size: 1.55rem;
+  }
+
+  .card {
+    padding: 18px 12px;
+  }
+
+  .bundleGrid {
+    grid-template-columns: 1fr;
+  }
+}
