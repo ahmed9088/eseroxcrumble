@@ -1261,19 +1261,19 @@ export default function PreorderPage() {
             <div className={styles.paymentBox}>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Bank Name</span>
-                <span className={styles.bankValue}>United Bank Limited</span>
+                <span className={styles.bankValue}>MEEZAN BANK</span>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Account Title</span>
-                <span className={styles.bankValue}>Shahrez Naeem Memon</span>
+                <span className={styles.bankValue}>ANASHA SHAKEEL</span>
               </div>
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>Account Number</span>
                 <span className={styles.bankValue}>
-                  1284358920124
+                  99500109179059
                   <button
                     type="button"
-                    onClick={() => handleCopy('1284358920124', 'acc')}
+                    onClick={() => handleCopy('99500109179059', 'acc')}
                     className={`${styles.copyBtn} ${copiedField === 'acc' ? styles.copyBtnSuccess : ''}`}
                   >
                     {copiedField === 'acc' ? 'Copied!' : 'Copy'}
@@ -1283,10 +1283,10 @@ export default function PreorderPage() {
               <div className={styles.bankRow}>
                 <span className={styles.bankLabel}>IBAN</span>
                 <span className={styles.bankValue} style={{ fontSize: '0.85rem' }}>
-                  PK09UNIL0109000358920124
+                  PK36MEZN0099500109179059
                   <button
                     type="button"
-                    onClick={() => handleCopy('PK09UNIL0109000358920124', 'iban')}
+                    onClick={() => handleCopy('PK36MEZN0099500109179059', 'iban')}
                     className={`${styles.copyBtn} ${copiedField === 'iban' ? styles.copyBtnSuccess : ''}`}
                   >
                     {copiedField === 'iban' ? 'Copied!' : 'Copy'}
