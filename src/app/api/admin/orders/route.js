@@ -21,13 +21,14 @@ export async function GET(request) {
     const search = searchParams.get('search') || '';
     const paymentStatus = searchParams.get('paymentStatus') || '';
     const orderType = searchParams.get('orderType') || '';
+    const batch = searchParams.get('batch') || '';
 
     let query = supabaseAdmin
       .from('orders')
       .select('*')
       .order('created_at', { ascending: false });
 
-    // Apply filters
+    // Apply database filters where safe
     if (paymentStatus) {
       query = query.eq('payment_status', paymentStatus);
     }
@@ -42,17 +43,26 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Failed to fetch orders.' }, { status: 500 });
     }
 
-    // Client-side text search (safely handles null/missing fields)
-    let filteredOrders = orders;
+    // Client-side text search and batch filtering (safely handles null/missing fields)
+    let filteredOrders = orders || [];
+
+    // Filter by batch name (defaults to 'Pre-Order 1' if not set on older orders)
+    if (batch && batch !== 'all') {
+      filteredOrders = filteredOrders.filter(
+        (o) => (o.batch_name || 'Pre-Order 1').toLowerCase() === batch.toLowerCase()
+      );
+    }
+
     if (search) {
       const term = search.toLowerCase();
-      filteredOrders = orders.filter(
+      filteredOrders = filteredOrders.filter(
         (o) =>
           (o.first_name || '').toLowerCase().includes(term) ||
           (o.last_name || '').toLowerCase().includes(term) ||
           (o.email || '').toLowerCase().includes(term) ||
           (o.phone || '').includes(term) ||
-          (o.id || '').toLowerCase().includes(term)
+          (o.id || '').toLowerCase().includes(term) ||
+          (o.batch_name || '').toLowerCase().includes(term)
       );
     }
 
@@ -73,6 +83,7 @@ export async function PUT(request) {
       orderId,
       paymentStatus,
       orderStatus,
+      batchName,
       firstName,
       lastName,
       email,
@@ -170,6 +181,7 @@ export async function PUT(request) {
     const updates = {};
     if (paymentStatus) updates.payment_status = paymentStatus;
     if (orderStatus) updates.order_status = orderStatus;
+    if (batchName !== undefined) updates.batch_name = batchName;
     if (firstName !== undefined) updates.first_name = firstName;
     if (lastName !== undefined) updates.last_name = lastName;
     if (email !== undefined) updates.email = email;
@@ -183,12 +195,25 @@ export async function PUT(request) {
     if (deliveryLandmark !== undefined) updates.delivery_landmark = deliveryLandmark;
     if (paymentProofUrl !== undefined) updates.payment_proof_url = paymentProofUrl;
 
-    const { data: updatedOrder, error: updateError } = await supabaseAdmin
+    let { data: updatedOrder, error: updateError } = await supabaseAdmin
       .from('orders')
       .update(updates)
       .eq('id', orderId)
       .select()
       .single();
+
+    // If batch_name column doesn't exist yet, retry without batch_name
+    if (updateError && updateError.message?.includes('batch_name')) {
+      delete updates.batch_name;
+      const retry = await supabaseAdmin
+        .from('orders')
+        .update(updates)
+        .eq('id', orderId)
+        .select()
+        .single();
+      updatedOrder = retry.data;
+      updateError = retry.error;
+    }
 
     if (updateError) {
       console.error('Error updating order:', updateError);
@@ -200,85 +225,185 @@ export async function PUT(request) {
       const refId = orderId.substring(0, 8);
       
       if (paymentStatus === 'approved') {
-        // Send payment approval confirmation
-        await resend.emails.send({
-          from: 'Cafe Esero <noreply@itsahmed.tech>',
-          to: order.email,
-          subject: `✅ Preorder Confirmed! - Ref: #${refId}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; background-color: #faf6f0; padding: 40px; color: #4a2c11; max-width: 600px; margin: 0 auto; border: 1px solid #e6d3c0; border-radius: 12px;">
-              <h2 style="color: #2e7d32; text-align: center; margin-bottom: 5px;">Payment Confirmed!</h2>
-              <h3 style="color: #6d4c41; text-align: center; margin-top: 0; font-weight: normal;">Cafe Esero × Crumble Cookie</h3>
-              <hr style="border: 0; border-top: 1px solid #e6d3c0; margin: 20px 0;"/>
-              
-              <p>Hi ${order.first_name},</p>
-              <p>Great news! We have successfully verified your bank transfer payment of <strong>${order.total_amount.toLocaleString()} PKR</strong>.</p>
-              <p>Your Crumble Cookie preorder is now <strong>officially confirmed</strong>! We are preparing the freshly baked cookies for you.</p>
-              
-              <div style="background-color: #ffffff; border: 1px solid #f0e2d5; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <h4 style="color: #5d4037; margin-top: 0; margin-bottom: 10px; border-bottom: 1px dashed #e6d3c0; padding-bottom: 5px;">Preorder Reference Details</h4>
-                <p style="font-size: 14px; margin: 5px 0;"><strong>Order ID:</strong> #${order.id}</p>
-                <p style="font-size: 14px; margin: 5px 0;"><strong>Delivery Method:</strong> ${order.order_type.toUpperCase()}</p>
-                <p style="font-size: 14px; margin: 5px 0;"><strong>Amount Paid:</strong> ${order.total_amount.toLocaleString()} PKR</p>
-              </div>
+        try {
+          await resend.emails.send({
+            from: 'Cafe Esero <noreply@itsahmed.tech>',
+            to: order.email,
+            subject: `✅ Preorder Confirmed! - Ref: #${refId}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; background-color: #faf6f0; padding: 40px; color: #4a2c11; max-width: 600px; margin: 0 auto; border: 1px solid #e6d3c0; border-radius: 12px;">
+                <h2 style="color: #2e7d32; text-align: center; margin-bottom: 5px;">Payment Confirmed!</h2>
+                <h3 style="color: #6d4c41; text-align: center; margin-top: 0; font-weight: normal;">Cafe Esero × Crumble Cookie</h3>
+                <hr style="border: 0; border-top: 1px solid #e6d3c0; margin: 20px 0;"/>
+                
+                <p>Hi ${order.first_name},</p>
+                <p>Great news! We have successfully verified your bank transfer payment of <strong>${order.total_amount.toLocaleString()} PKR</strong>.</p>
+                <p>Your Crumble Cookie preorder is now <strong>officially confirmed</strong>! We are preparing the freshly baked cookies for you.</p>
+                
+                <div style="background-color: #ffffff; border: 1px solid #f0e2d5; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h4 style="color: #5d4037; margin-top: 0; margin-bottom: 10px; border-bottom: 1px dashed #e6d3c0; padding-bottom: 5px;">Preorder Reference Details</h4>
+                  <p style="font-size: 14px; margin: 5px 0;"><strong>Order ID:</strong> #${order.id}</p>
+                  <p style="font-size: 14px; margin: 5px 0;"><strong>Delivery Method:</strong> ${order.order_type.toUpperCase()}</p>
+                  <p style="font-size: 14px; margin: 5px 0;"><strong>Amount Paid:</strong> ${order.total_amount.toLocaleString()} PKR</p>
+                </div>
 
-              <div style="background-color: #e8f5e9; border-radius: 8px; padding: 15px; border-left: 4px solid #2e7d32; font-size: 14px; color: #1b5e20;">
-                <p style="margin: 0; font-weight: bold;">What's Next?</p>
-                <p style="margin: 5px 0 0 0;">For <strong>Dine-in/Takeaway</strong>, visit Cafe Esero and show this confirmation email to collect your cookies. For <strong>Delivery</strong>, sit back and relax—our rider will be on the way soon!</p>
-              </div>
+                <div style="background-color: #e8f5e9; border-radius: 8px; padding: 15px; border-left: 4px solid #2e7d32; font-size: 14px; color: #1b5e20;">
+                  <p style="margin: 0; font-weight: bold;">What's Next?</p>
+                  <p style="margin: 5px 0 0 0;">For <strong>Dine-in/Takeaway</strong>, visit Cafe Esero and show this confirmation email to collect your cookies. For <strong>Delivery</strong>, sit back and relax—our rider will be on the way soon!</p>
+                </div>
 
-              <p style="font-size: 14px; margin-top: 25px; line-height: 1.5;">
-                Thank you for choosing Cafe Esero!<br/>
-                <strong>Cafe Esero Team</strong>
-              </p>
-            </div>
-          `,
-        });
+                <p style="font-size: 14px; margin-top: 25px; line-height: 1.5;">
+                  Thank you for choosing Cafe Esero!<br/>
+                  <strong>Cafe Esero Team</strong>
+                </p>
+              </div>
+            `,
+          });
+        } catch (emailErr) {
+          console.warn('Failed to send approval email:', emailErr);
+        }
       } else if (paymentStatus === 'rejected') {
-        // Send payment rejection notification
-        await resend.emails.send({
-          from: 'Cafe Esero <noreply@itsahmed.tech>',
-          to: order.email,
-          subject: `❌ Preorder Payment Declined - Ref: #${refId}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; background-color: #faf6f0; padding: 40px; color: #4a2c11; max-width: 600px; margin: 0 auto; border: 1px solid #e6d3c0; border-radius: 12px;">
-              <h2 style="color: #c62828; text-align: center; margin-bottom: 5px;">Payment Verification Failed</h2>
-              <h3 style="color: #6d4c41; text-align: center; margin-top: 0; font-weight: normal;">Cafe Esero × Crumble Cookie</h3>
-              <hr style="border: 0; border-top: 1px solid #e6d3c0; margin: 20px 0;"/>
-              
-              <p>Hi ${order.first_name},</p>
-              <p>We were unable to verify your bank transfer payment of <strong>${order.total_amount.toLocaleString()} PKR</strong> for your cookie preorder (Ref: #${refId}).</p>
-              
-              <div style="background-color: #ffebee; border-radius: 8px; padding: 15px; border-left: 4px solid #c62828; font-size: 14px; color: #b71c1c; margin: 20px 0;">
-                <p style="margin: 0; font-weight: bold;">Reason for Decline:</p>
-                <p style="margin: 5px 0 0 0;">The transfer screenshot uploaded could not be verified on our bank account statements, or the image was blurry or incomplete.</p>
+        try {
+          await resend.emails.send({
+            from: 'Cafe Esero <noreply@itsahmed.tech>',
+            to: order.email,
+            subject: `❌ Preorder Payment Declined - Ref: #${refId}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; background-color: #faf6f0; padding: 40px; color: #4a2c11; max-width: 600px; margin: 0 auto; border: 1px solid #e6d3c0; border-radius: 12px;">
+                <h2 style="color: #c62828; text-align: center; margin-bottom: 5px;">Payment Verification Failed</h2>
+                <h3 style="color: #6d4c41; text-align: center; margin-top: 0; font-weight: normal;">Cafe Esero × Crumble Cookie</h3>
+                <hr style="border: 0; border-top: 1px solid #e6d3c0; margin: 20px 0;"/>
+                
+                <p>Hi ${order.first_name},</p>
+                <p>We were unable to verify your bank transfer payment of <strong>${order.total_amount.toLocaleString()} PKR</strong> for your cookie preorder (Ref: #${refId}).</p>
+                
+                <div style="background-color: #ffebee; border-radius: 8px; padding: 15px; border-left: 4px solid #c62828; font-size: 14px; color: #b71c1c; margin: 20px 0;">
+                  <p style="margin: 0; font-weight: bold;">Reason for Decline:</p>
+                  <p style="margin: 5px 0 0 0;">The transfer screenshot uploaded could not be verified on our bank account statements, or the image was blurry or incomplete.</p>
+                </div>
+
+                <p style="font-weight: bold; color: #4e342e;">How to resolve this:</p>
+                <ol style="font-size: 14px; line-height: 1.6; color: #4e342e;">
+                  <li>Verify that you transferred the exact amount (<strong>${order.total_amount.toLocaleString()} PKR</strong>) to the correct account:
+                    <ul style="margin: 5px 0;">
+                      <li>Bank: United Bank Limited</li>
+                      <li>Account Title: Shahrez Naeem Memon</li>
+                      <li>Account Number: 1284358920124</li>
+                    </ul>
+                  </li>
+                  <li>Please reply directly to this email with a clear, full screenshot of your successful transaction slip showing the date, amount, and reference number.</li>
+                </ol>
+
+                <p style="font-size: 14px; margin-top: 25px; line-height: 1.5;">
+                  If you have any questions or need support, feel free to contact us.<br/>
+                  <strong>Cafe Esero Team</strong>
+                </p>
               </div>
-
-              <p style="font-weight: bold; color: #4e342e;">How to resolve this:</p>
-              <ol style="font-size: 14px; line-height: 1.6; color: #4e342e;">
-                <li>Verify that you transferred the exact amount (<strong>${order.total_amount.toLocaleString()} PKR</strong>) to the correct account:
-                  <ul style="margin: 5px 0;">
-                    <li>Bank: United Bank Limited</li>
-                    <li>Account Title: Shahrez Naeem Memon</li>
-                    <li>Account Number: 1284358920124</li>
-                  </ul>
-                </li>
-                <li>Please reply directly to this email with a clear, full screenshot of your successful transaction slip showing the date, amount, and reference number.</li>
-              </ol>
-
-              <p style="font-size: 14px; margin-top: 25px; line-height: 1.5;">
-                If you have any questions or need support, feel free to contact us.<br/>
-                <strong>Cafe Esero Team</strong>
-              </p>
-            </div>
-          `,
-        });
+            `,
+          });
+        } catch (emailErr) {
+          console.warn('Failed to send rejection email:', emailErr);
+        }
       }
     }
 
     return NextResponse.json({ success: true, order: updatedOrder });
   } catch (error) {
     console.error('Admin Orders PUT Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// DELETE: Delete an order or multiple orders, with optional stock restoration
+export async function DELETE(request) {
+  try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    let orderIds = [];
+    let restoreStock = true;
+
+    // Support both URL params (?orderId=xxx) and JSON body ({ orderIds: [...], restoreStock: true })
+    const { searchParams } = new URL(request.url);
+    const paramId = searchParams.get('orderId');
+    const paramRestore = searchParams.get('restoreStock');
+
+    if (paramId) {
+      orderIds = [paramId];
+      if (paramRestore !== null) restoreStock = paramRestore === 'true';
+    } else {
+      try {
+        const body = await request.json();
+        if (body.orderIds && Array.isArray(body.orderIds)) {
+          orderIds = body.orderIds;
+        } else if (body.orderId) {
+          orderIds = [body.orderId];
+        }
+        if (body.restoreStock !== undefined) {
+          restoreStock = Boolean(body.restoreStock);
+        }
+      } catch (e) {
+        // Body was empty or not json
+      }
+    }
+
+    if (!orderIds || orderIds.length === 0) {
+      return NextResponse.json({ error: 'Order ID(s) required to delete.' }, { status: 400 });
+    }
+
+    // If restoreStock is requested, find the orders and add their items back to available_stock
+    if (restoreStock) {
+      const { data: targetOrders } = await supabaseAdmin
+        .from('orders')
+        .select('*')
+        .in('id', orderIds);
+
+      if (targetOrders && targetOrders.length > 0) {
+        for (const ord of targetOrders) {
+          // Only restore if the order wasn't already cancelled or rejected
+          const wasActive = ord.payment_status !== 'rejected' && ord.order_status !== 'cancelled';
+          if (wasActive) {
+            const deductions = getOrderCookieDeductions(ord);
+            for (const [flavorKey, qty] of Object.entries(deductions)) {
+              if (qty > 0) {
+                const { data: stockRow } = await supabaseAdmin
+                  .from('cookie_stock')
+                  .select('available_stock')
+                  .eq('flavor_key', flavorKey)
+                  .single();
+
+                if (stockRow) {
+                  await supabaseAdmin
+                    .from('cookie_stock')
+                    .update({ available_stock: stockRow.available_stock + qty })
+                    .eq('flavor_key', flavorKey);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Delete orders from table
+    const { error: deleteError } = await supabaseAdmin
+      .from('orders')
+      .delete()
+      .in('id', orderIds);
+
+    if (deleteError) {
+      console.error('Error deleting orders from Supabase:', deleteError);
+      return NextResponse.json({ error: 'Failed to delete order(s).' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      deletedCount: orderIds.length,
+      message: `Successfully deleted ${orderIds.length} order(s).`,
+    });
+  } catch (error) {
+    console.error('Admin Orders DELETE Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
@@ -332,6 +457,7 @@ export async function POST(request) {
 
     const body = await request.json();
     const {
+      batchName = 'Pre-Order 1',
       firstName,
       lastName,
       email,
@@ -398,48 +524,115 @@ export async function POST(request) {
     }
 
     // Save order details in DB and deduct stock inside transaction
-    const { data: rpcResult, error: orderError } = await supabaseAdmin.rpc('place_order_with_stock', {
-      p_first_name: firstName,
-      p_last_name: lastName,
-      p_email: email,
-      p_phone: phone,
-      p_order_type: orderType,
-      p_delivery_street: orderType === 'delivery' ? deliveryStreet : null,
-      p_delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
-      p_delivery_city: orderType === 'delivery' ? deliveryCity : null,
-      p_delivery_state: orderType === 'delivery' ? deliveryState : null,
-      p_delivery_zip: orderType === 'delivery' ? deliveryZip : null,
-      p_delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
-      p_classic_chocolate_chip_qty: classicChocolateChipQty,
-      p_double_chocolate_qty: doubleChocolateQty,
-      p_chocolate_chip_walnut_qty: chocolateChipWalnutQty,
-      p_cookies_cream_qty: cookiesCreamQty,
-      p_kunafa_chocolate_qty: kunafaChocolateQty,
-      p_hazelnut_filled_qty: hazelnutFilledQty,
-      p_lotus_lava_qty: lotusLavaQty,
-      p_classic_bundle_qty: classicBundleQty,
-      p_classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
-      p_premium_bundle_qty: premiumBundleQty,
-      p_premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
-      p_total_amount: totalAmount,
-      p_payment_proof_url: paymentProofUrl,
-      p_deductions: deductions
-    });
+    let rpcResult = null;
+    let orderError = null;
 
-    if (orderError || !rpcResult || !rpcResult.success) {
-      const errMsg = orderError?.message || rpcResult?.error || 'Database error processing order.';
-      return NextResponse.json({ error: errMsg }, { status: 500 });
+    try {
+      const res = await supabaseAdmin.rpc('place_order_with_stock', {
+        p_first_name: firstName,
+        p_last_name: lastName,
+        p_email: email,
+        p_phone: phone,
+        p_order_type: orderType,
+        p_delivery_street: orderType === 'delivery' ? deliveryStreet : null,
+        p_delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
+        p_delivery_city: orderType === 'delivery' ? deliveryCity : null,
+        p_delivery_state: orderType === 'delivery' ? deliveryState : null,
+        p_delivery_zip: orderType === 'delivery' ? deliveryZip : null,
+        p_delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
+        p_classic_chocolate_chip_qty: classicChocolateChipQty,
+        p_double_chocolate_qty: doubleChocolateQty,
+        p_chocolate_chip_walnut_qty: chocolateChipWalnutQty,
+        p_cookies_cream_qty: cookiesCreamQty,
+        p_kunafa_chocolate_qty: kunafaChocolateQty,
+        p_hazelnut_filled_qty: hazelnutFilledQty,
+        p_lotus_lava_qty: lotusLavaQty,
+        p_classic_bundle_qty: classicBundleQty,
+        p_classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
+        p_premium_bundle_qty: premiumBundleQty,
+        p_premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
+        p_total_amount: totalAmount,
+        p_payment_proof_url: paymentProofUrl,
+        p_deductions: deductions
+      });
+      rpcResult = res.data;
+      orderError = res.error;
+    } catch (e) {
+      orderError = e;
     }
 
-    const orderId = rpcResult.order_id;
-    if (paymentStatus !== 'pending' || orderStatus !== 'received') {
-      await supabaseAdmin
-        .from('orders')
-        .update({
-          payment_status: paymentStatus,
-          order_status: orderStatus
-        })
-        .eq('id', orderId);
+    let orderId = rpcResult?.order_id;
+
+    // Fallback: direct insert if RPC failed
+    if (!orderId || orderError) {
+      // Deduct stock directly
+      for (const [key, qty] of Object.entries(deductions)) {
+        if (qty > 0) {
+          const { data: sRow } = await supabaseAdmin
+            .from('cookie_stock')
+            .select('available_stock')
+            .eq('flavor_key', key)
+            .single();
+          if (sRow) {
+            await supabaseAdmin
+              .from('cookie_stock')
+              .update({ available_stock: Math.max(0, sRow.available_stock - qty) })
+              .eq('flavor_key', key);
+          }
+        }
+      }
+
+      const orderData = {
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone,
+        order_type: orderType,
+        delivery_street: orderType === 'delivery' ? deliveryStreet : null,
+        delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
+        delivery_city: orderType === 'delivery' ? deliveryCity : null,
+        delivery_state: orderType === 'delivery' ? deliveryState : null,
+        delivery_zip: orderType === 'delivery' ? deliveryZip : null,
+        delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
+        classic_chocolate_chip_qty: classicChocolateChipQty,
+        double_chocolate_qty: doubleChocolateQty,
+        chocolate_chip_walnut_qty: chocolateChipWalnutQty,
+        cookies_cream_qty: cookiesCreamQty,
+        kunafa_chocolate_qty: kunafaChocolateQty,
+        hazelnut_filled_qty: hazelnutFilledQty,
+        lotus_lava_qty: lotusLavaQty,
+        classic_bundle_qty: classicBundleQty,
+        classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
+        premium_bundle_qty: premiumBundleQty,
+        premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
+        total_amount: totalAmount,
+        payment_proof_url: paymentProofUrl,
+        payment_status: paymentStatus,
+        order_status: orderStatus,
+      };
+
+      // Try inserting with batch_name
+      let insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: batchName }).select('id').single();
+      if (insRes.error && insRes.error.message?.includes('batch_name')) {
+        insRes = await supabaseAdmin.from('orders').insert(orderData).select('id').single();
+      }
+
+      if (insRes.error) {
+        return NextResponse.json({ error: insRes.error.message || 'Failed to create order.' }, { status: 500 });
+      }
+      orderId = insRes.data?.id;
+    } else {
+      // Update batch_name and statuses if RPC was used
+      const finalUpdates = {
+        payment_status: paymentStatus,
+        order_status: orderStatus,
+        batch_name: batchName,
+      };
+      let { error: uErr } = await supabaseAdmin.from('orders').update(finalUpdates).eq('id', orderId);
+      if (uErr && uErr.message?.includes('batch_name')) {
+        delete finalUpdates.batch_name;
+        await supabaseAdmin.from('orders').update(finalUpdates).eq('id', orderId);
+      }
     }
 
     return NextResponse.json({ success: true, orderId });

@@ -10,17 +10,15 @@ async function isAuthenticated() {
   return session && session.value === adminPassword;
 }
 
-const defaultStock = {
-  classic_chocolate_chip: { available: 200, initial: 200, price: 580, is_active: true },
-  double_chocolate: { available: 200, initial: 200, price: 580, is_active: true },
-  chocolate_chip_walnut: { available: 100, initial: 100, price: 580, is_active: true },
-  cookies_cream: { available: 150, initial: 150, price: 620, is_active: true },
-  kunafa_chocolate: { available: 100, initial: 100, price: 620, is_active: true },
-  hazelnut_filled: { available: 150, initial: 150, price: 620, is_active: true },
-  lotus_lava: { available: 100, initial: 100, price: 620, is_active: true },
-  classic_bundle: { is_active: true, price: 2200 },
-  premium_bundle: { is_active: true, price: 2400 },
-};
+const defaultStockList = [
+  { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', available: 200, initial: 200, price: 580, is_active: true, category: 'classic' },
+  { key: 'double_chocolate', name: 'Double Chocolate', available: 200, initial: 200, price: 580, is_active: true, category: 'classic' },
+  { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', available: 100, initial: 100, price: 580, is_active: true, category: 'classic' },
+  { key: 'cookies_cream', name: 'Cookies & Cream', available: 150, initial: 150, price: 620, is_active: true, category: 'premium' },
+  { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', available: 100, initial: 100, price: 620, is_active: true, category: 'premium' },
+  { key: 'hazelnut_filled', name: 'Hazelnut Filled', available: 150, initial: 150, price: 620, is_active: true, category: 'premium' },
+  { key: 'lotus_lava', name: 'Lotus Lava', available: 100, initial: 100, price: 620, is_active: true, category: 'premium' },
+];
 
 export async function GET() {
   try {
@@ -29,44 +27,180 @@ export async function GET() {
       .select('*')
       .order('flavor_key');
 
-    if (error) {
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        console.warn('cookie_stock table not found. Returning default fallback stock.');
-        return NextResponse.json({ stock: defaultStock });
-      }
-      console.error('Error loading stock from db:', error);
-      return NextResponse.json({ error: 'Failed to load stock.' }, { status: 500 });
+    let items = [];
+    if (error || !stockItems || stockItems.length === 0) {
+      items = [...defaultStockList];
+    } else {
+      items = stockItems.map((item) => {
+        const isClassic =
+          item.category === 'classic' ||
+          item.flavor_key.startsWith('classic') ||
+          item.flavor_key === 'chocolate_chip_walnut';
+        return {
+          key: item.flavor_key,
+          name: item.flavor_name || item.flavor_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          available: item.available_stock,
+          initial: item.initial_stock,
+          price: item.price,
+          is_active: item.is_active,
+          category: item.category || (isClassic ? 'classic' : 'premium'),
+        };
+      });
     }
 
+    // Fetch bundle configurations from settings if available
+    let bundleSettings = {
+      classic_bundle: { price: 2200, is_active: true },
+      premium_bundle: { price: 2400, is_active: true },
+    };
+
+    try {
+      const { data: bData } = await supabaseAdmin
+        .from('settings')
+        .select('value')
+        .eq('key', 'bundle_settings')
+        .single();
+      if (bData && bData.value) {
+        bundleSettings = { ...bundleSettings, ...bData.value };
+      }
+    } catch (bErr) {
+      // ignore
+    }
+
+    // Check if any classic or premium items are active
+    const hasClassicActive = items.some((i) => i.category === 'classic' && i.is_active);
+    const hasPremiumActive = items.some((i) => i.category === 'premium' && i.is_active);
+
     const stockMap = {};
-    stockItems.forEach(item => {
-      stockMap[item.flavor_key] = {
-        available: item.available_stock,
-        initial: item.initial_stock,
+    items.forEach((item) => {
+      stockMap[item.key] = {
+        flavor_name: item.name,
+        name: item.name,
+        available: item.available,
+        initial: item.initial,
         price: item.price,
-        is_active: item.is_active
+        is_active: item.is_active,
+        category: item.category,
       };
     });
 
-    const hasClassicActive = stockItems.some(i => (i.flavor_key.startsWith('classic') || i.flavor_key === 'chocolate_chip_walnut') && i.is_active);
-    const hasPremiumActive = stockItems.some(i => (!i.flavor_key.startsWith('classic') && i.flavor_key !== 'chocolate_chip_walnut') && i.is_active);
-
     stockMap['classic_bundle'] = {
-      is_active: hasClassicActive,
-      price: 2200
-    };
-    stockMap['premium_bundle'] = {
-      is_active: hasPremiumActive,
-      price: 2400
+      name: 'Classic Bundle (pack of 4)',
+      is_active: bundleSettings.classic_bundle.is_active && hasClassicActive,
+      price: bundleSettings.classic_bundle.price,
+      isBundle: true,
+      category: 'bundle',
     };
 
-    return NextResponse.json({ stock: stockMap });
+    stockMap['premium_bundle'] = {
+      name: 'Premium Bundle (pack of 4)',
+      is_active: bundleSettings.premium_bundle.is_active && hasPremiumActive,
+      price: bundleSettings.premium_bundle.price,
+      isBundle: true,
+      category: 'bundle',
+    };
+
+    return NextResponse.json({
+      stock: stockMap,
+      items,
+      bundles: bundleSettings,
+    });
   } catch (error) {
     console.error('Stock GET Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
+// POST: Add a new menu item / cookie flavour
+export async function POST(request) {
+  try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const {
+      name,
+      price = 600,
+      initialStock = 100,
+      availableStock = 100,
+      category = 'classic',
+      isActive = true,
+      customKey,
+    } = body;
+
+    if (!name || !name.trim()) {
+      return NextResponse.json({ error: 'Item name is required.' }, { status: 400 });
+    }
+
+    // Generate slug/key
+    const generatedKey = customKey
+      ? customKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+      : name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
+
+    const key = generatedKey || `flavor_${Date.now()}`;
+
+    // Insert into cookie_stock
+    const insertPayload = {
+      flavor_key: key,
+      flavor_name: name.trim(),
+      price: parseInt(price, 10) || 0,
+      initial_stock: parseInt(initialStock, 10) || 0,
+      available_stock: parseInt(availableStock, 10) || 0,
+      is_active: Boolean(isActive),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Try inserting with category if column exists
+    let insertErr = null;
+    try {
+      const { error } = await supabaseAdmin
+        .from('cookie_stock')
+        .insert({ ...insertPayload, category });
+      insertErr = error;
+    } catch (e) {
+      insertErr = e;
+    }
+
+    if (insertErr) {
+      // Fallback: try inserting without category column if not yet migrated
+      const { error: fallbackErr } = await supabaseAdmin
+        .from('cookie_stock')
+        .insert(insertPayload);
+
+      if (fallbackErr) {
+        console.error('Error inserting new menu item:', fallbackErr);
+        return NextResponse.json(
+          { error: fallbackErr.message || 'Failed to add new menu item.' },
+          { status: 500 }
+        );
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      item: {
+        key,
+        name: name.trim(),
+        price: parseInt(price, 10) || 0,
+        initial: parseInt(initialStock, 10) || 0,
+        available: parseInt(availableStock, 10) || 0,
+        category,
+        is_active: Boolean(isActive),
+      },
+    });
+  } catch (error) {
+    console.error('Stock POST Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// PUT: Update item details, prices, stock levels, or bundles
 export async function PUT(request) {
   try {
     if (!(await isAuthenticated())) {
@@ -74,9 +208,29 @@ export async function PUT(request) {
     }
 
     const body = await request.json();
-    const { flavorKey, availableStock, initialStock, price, isActive, bulkStock } = body;
+    const {
+      flavorKey,
+      name,
+      availableStock,
+      initialStock,
+      price,
+      isActive,
+      category,
+      bulkStock,
+      bundleSettings,
+    } = body;
 
-    // Support bulk stock update
+    // Support updating bundle settings
+    if (bundleSettings) {
+      await supabaseAdmin.from('settings').upsert({
+        key: 'bundle_settings',
+        value: bundleSettings,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+      return NextResponse.json({ success: true, message: 'Bundle settings updated.' });
+    }
+
+    // Support bulk stock update / reset
     if (bulkStock) {
       for (const [key, val] of Object.entries(bulkStock)) {
         if (key === 'classic_bundle' || key === 'premium_bundle') continue;
@@ -94,19 +248,55 @@ export async function PUT(request) {
       return NextResponse.json({ success: true });
     }
 
-    // Support toggle/active updates for backward compatibility (single field changes)
+    // Single item update
     if (flavorKey) {
-      const updates = {};
-      if (availableStock !== undefined) updates.available_stock = availableStock;
-      if (initialStock !== undefined) updates.initial_stock = initialStock;
-      if (price !== undefined) updates.price = price;
-      if (isActive !== undefined) updates.is_active = isActive;
-      updates.updated_at = new Date().toISOString();
+      // Handle bundle price/status update
+      if (flavorKey === 'classic_bundle' || flavorKey === 'premium_bundle') {
+        const { data: bData } = await supabaseAdmin
+          .from('settings')
+          .select('value')
+          .eq('key', 'bundle_settings')
+          .single();
 
-      const { error } = await supabaseAdmin
+        const currentBundles = bData?.value || {
+          classic_bundle: { price: 2200, is_active: true },
+          premium_bundle: { price: 2400, is_active: true },
+        };
+
+        if (price !== undefined) currentBundles[flavorKey].price = parseInt(price, 10);
+        if (isActive !== undefined) currentBundles[flavorKey].is_active = Boolean(isActive);
+
+        await supabaseAdmin.from('settings').upsert({
+          key: 'bundle_settings',
+          value: currentBundles,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+
+        return NextResponse.json({ success: true });
+      }
+
+      const updates = { updated_at: new Date().toISOString() };
+      if (name !== undefined) updates.flavor_name = name.trim();
+      if (availableStock !== undefined) updates.available_stock = parseInt(availableStock, 10);
+      if (initialStock !== undefined) updates.initial_stock = parseInt(initialStock, 10);
+      if (price !== undefined) updates.price = parseInt(price, 10);
+      if (isActive !== undefined) updates.is_active = Boolean(isActive);
+      if (category !== undefined) updates.category = category;
+
+      let { error } = await supabaseAdmin
         .from('cookie_stock')
         .update(updates)
         .eq('flavor_key', flavorKey);
+
+      // If category column does not exist yet, retry without category
+      if (error && error.message?.includes('category')) {
+        delete updates.category;
+        const retry = await supabaseAdmin
+          .from('cookie_stock')
+          .update(updates)
+          .eq('flavor_key', flavorKey);
+        error = retry.error;
+      }
 
       if (error) {
         console.error('Error updating stock row:', error);
@@ -116,8 +306,7 @@ export async function PUT(request) {
       return NextResponse.json({ success: true });
     }
 
-    // Support full compatibility with old boolean toggle structure
-    // If body contains stock object, e.g. { stock: { classic_chocolate_chip: false } }
+    // Compatibility with old boolean toggle structure
     if (body.stock) {
       for (const [key, isAct] of Object.entries(body.stock)) {
         if (key === 'classic_bundle' || key === 'premium_bundle') continue;
@@ -135,6 +324,44 @@ export async function PUT(request) {
     return NextResponse.json({ error: 'Invalid payload.' }, { status: 400 });
   } catch (error) {
     console.error('Stock PUT Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// DELETE: Delete a menu item / cookie flavour permanently
+export async function DELETE(request) {
+  try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const flavorKey = searchParams.get('flavorKey');
+
+    if (!flavorKey) {
+      return NextResponse.json({ error: 'flavorKey is required.' }, { status: 400 });
+    }
+
+    if (flavorKey === 'classic_bundle' || flavorKey === 'premium_bundle') {
+      return NextResponse.json(
+        { error: 'Bundle offerings cannot be deleted. You can toggle them active/inactive.' },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabaseAdmin
+      .from('cookie_stock')
+      .delete()
+      .eq('flavor_key', flavorKey);
+
+    if (error) {
+      console.error('Error deleting menu item from cookie_stock:', error);
+      return NextResponse.json({ error: error.message || 'Failed to delete item.' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: `Item ${flavorKey} deleted successfully.` });
+  } catch (error) {
+    console.error('Stock DELETE Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

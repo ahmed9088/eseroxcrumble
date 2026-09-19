@@ -96,8 +96,10 @@ export default function PreorderPage() {
   const [copiedField, setCopiedField] = useState('');
   const [announcement, setAnnouncement] = useState({ text: '', isActive: false });
   const [orderSettings, setOrderSettings] = useState({ isDeliveryEnabled: true, isPickupEnabled: true });
+  const [menuItems, setMenuItems] = useState([]);
+  const [activeBatchName, setActiveBatchName] = useState('Pre-Order 1');
 
-  // Fetch Stock Status and Announcement on Mount
+  // Fetch Stock Status, Menu Items, Batches, and Announcement on Mount
   useEffect(() => {
     async function loadData() {
       try {
@@ -106,8 +108,23 @@ export default function PreorderPage() {
         if (data.stock) {
           setStockStatus(data.stock);
         }
+        if (data.items) {
+          setMenuItems(data.items);
+        }
       } catch (err) {
         console.error('Failed to load stock settings', err);
+      }
+
+      try {
+        const bRes = await fetch('/api/admin/batches');
+        if (bRes.ok) {
+          const bData = await bRes.json();
+          if (bData.activeBatch?.name) {
+            setActiveBatchName(bData.activeBatch.name);
+          }
+        }
+      } catch (bErr) {
+        console.error('Failed to load batches', bErr);
       }
 
       try {
@@ -199,18 +216,16 @@ export default function PreorderPage() {
 
   // Helper to extract counts of cookies in cart (both individual and inside bundles)
   const getCartCookieCounts = (currentQuantities, classicChoices, premiumChoices) => {
-    const counts = {
-      classic_chocolate_chip: currentQuantities.classic_chocolate_chip || 0,
-      double_chocolate: currentQuantities.double_chocolate || 0,
-      chocolate_chip_walnut: currentQuantities.chocolate_chip_walnut || 0,
-      cookies_cream: currentQuantities.cookies_cream || 0,
-      kunafa_chocolate: currentQuantities.kunafa_chocolate || 0,
-      hazelnut_filled: currentQuantities.hazelnut_filled || 0,
-      lotus_lava: currentQuantities.lotus_lava || 0,
-    };
+    const counts = {};
+    // Initialize counts for all items in quantities and stockStatus
+    Object.keys(currentQuantities).forEach((k) => { counts[k] = currentQuantities[k] || 0; });
+    Object.keys(stockStatus).forEach((k) => { if (counts[k] === undefined) counts[k] = currentQuantities[k] || 0; });
 
     const mapFriendlyToKey = (name) => {
+      if (!name) return null;
       const n = name.trim().toLowerCase();
+      const found = menuItems.find((i) => i.name.toLowerCase() === n || i.key.toLowerCase() === n);
+      if (found) return found.key;
       if (n.includes('walnut')) return 'chocolate_chip_walnut';
       if (n.includes('classic') || n.includes('chip')) return 'classic_chocolate_chip';
       if (n.includes('double')) return 'double_chocolate';
@@ -227,7 +242,7 @@ export default function PreorderPage() {
       Object.values(classicChoices).forEach(bundleObj => {
         Object.values(bundleObj).forEach(flvFriendly => {
           const key = mapFriendlyToKey(flvFriendly);
-          if (key) counts[key] += 1;
+          if (key) counts[key] = (counts[key] || 0) + 1;
         });
       });
     }
@@ -238,7 +253,7 @@ export default function PreorderPage() {
       Object.values(premiumChoices).forEach(bundleObj => {
         Object.values(bundleObj).forEach(flvFriendly => {
           const key = mapFriendlyToKey(flvFriendly);
-          if (key) counts[key] += 1;
+          if (key) counts[key] = (counts[key] || 0) + 1;
         });
       });
     }
@@ -258,16 +273,21 @@ export default function PreorderPage() {
     return !item || !item.is_active || item.available <= 0;
   };
 
+  // Dynamic Item Price helper
+  const getItemPrice = (key) => {
+    return stockStatus[key]?.price ?? COOKIE_PRICES[key] ?? 580;
+  };
+
   // Quantity Change Handlers
   const adjustQuantity = (item, diff) => {
     if (diff <= 0) {
-      setQuantities((prev) => ({ ...prev, [item]: Math.max(0, prev[item] + diff) }));
+      setQuantities((prev) => ({ ...prev, [item]: Math.max(0, (prev[item] || 0) + diff) }));
       return;
     }
 
     // Prevent ordering if item is completely inactive
     if (stockStatus[item] && !stockStatus[item].is_active) {
-      alert(`${item.replace('_', ' ').toUpperCase()} is currently unavailable!`);
+      alert(`${(stockStatus[item]?.name || item).toUpperCase()} is currently unavailable!`);
       return;
     }
 
@@ -279,14 +299,15 @@ export default function PreorderPage() {
         alert('Classic Bundle is currently unavailable!');
         return;
       }
-      const totalClassicAvailable = 
+      const classicItems = menuItems.filter((i) => i.category === 'classic' && i.is_active !== false);
+      const totalClassicAvailable = classicItems.reduce((acc, curr) => acc + (curr.available || 0), 0) ||
         (stockStatus.classic_chocolate_chip?.available || 0) +
         (stockStatus.double_chocolate?.available || 0) +
         (stockStatus.chocolate_chip_walnut?.available || 0);
-      const totalClassicOrdered = 
-        currentCounts.classic_chocolate_chip +
-        currentCounts.double_chocolate +
-        currentCounts.chocolate_chip_walnut;
+      const totalClassicOrdered = classicItems.reduce((acc, curr) => acc + (currentCounts[curr.key] || 0), 0) ||
+        (currentCounts.classic_chocolate_chip || 0) +
+        (currentCounts.double_chocolate || 0) +
+        (currentCounts.chocolate_chip_walnut || 0);
       if (totalClassicOrdered + 4 > totalClassicAvailable) {
         alert('Sorry, there is not enough classic cookie stock left to add another bundle!');
         return;
@@ -296,16 +317,17 @@ export default function PreorderPage() {
         alert('Premium Bundle is currently unavailable!');
         return;
       }
-      const totalPremiumAvailable = 
+      const premiumItems = menuItems.filter((i) => i.category === 'premium' && i.is_active !== false);
+      const totalPremiumAvailable = premiumItems.reduce((acc, curr) => acc + (curr.available || 0), 0) ||
         (stockStatus.cookies_cream?.available || 0) +
         (stockStatus.kunafa_chocolate?.available || 0) +
         (stockStatus.hazelnut_filled?.available || 0) +
         (stockStatus.lotus_lava?.available || 0);
-      const totalPremiumOrdered = 
-        currentCounts.cookies_cream +
-        currentCounts.kunafa_chocolate +
-        currentCounts.hazelnut_filled +
-        currentCounts.lotus_lava;
+      const totalPremiumOrdered = premiumItems.reduce((acc, curr) => acc + (currentCounts[curr.key] || 0), 0) ||
+        (currentCounts.cookies_cream || 0) +
+        (currentCounts.kunafa_chocolate || 0) +
+        (currentCounts.hazelnut_filled || 0) +
+        (currentCounts.lotus_lava || 0);
       if (totalPremiumOrdered + 4 > totalPremiumAvailable) {
         alert('Sorry, there is not enough premium cookie stock left to add another bundle!');
         return;
@@ -315,13 +337,13 @@ export default function PreorderPage() {
       const currentOrdered = currentCounts[item] || 0;
       const available = stockStatus[item]?.available || 0;
       if (currentOrdered + 1 > available) {
-        alert(`Sorry, only ${available} ${stockStatus[item]?.flavor_name || item.replace('_', ' ')} are available in total!`);
+        alert(`Sorry, only ${available} ${stockStatus[item]?.flavor_name || stockStatus[item]?.name || item.replace('_', ' ')} are available in total!`);
         return;
       }
     }
 
     setQuantities((prev) => {
-      const newVal = Math.max(0, prev[item] + diff);
+      const newVal = Math.max(0, (prev[item] || 0) + diff);
       return { ...prev, [item]: newVal };
     });
   };
@@ -329,7 +351,7 @@ export default function PreorderPage() {
   // Totals Calculations
   const getSubtotal = () => {
     return Object.entries(quantities).reduce((acc, [item, qty]) => {
-      return acc + qty * COOKIE_PRICES[item];
+      return acc + qty * getItemPrice(item);
     }, 0);
   };
 
@@ -602,6 +624,7 @@ export default function PreorderPage() {
       Object.entries(quantities).forEach(([item, qty]) => {
         formData.append(`${item.replace(/_([a-z])/g, (g) => g[1].toUpperCase())}Qty`, qty);
       });
+      formData.append('itemsJson', JSON.stringify(quantities));
 
       // Parse and attach bundle flavors string
       if (quantities.classic_bundle > 0) {
@@ -738,6 +761,24 @@ export default function PreorderPage() {
           <p className={styles.subtitle}>
             Reserve your favourite Crumble cookies before they're sold out—limited stock available.
           </p>
+          {activeBatchName && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '12px',
+              padding: '6px 16px',
+              background: 'rgba(200, 162, 122, 0.12)',
+              border: '1px solid rgba(200, 162, 122, 0.3)',
+              borderRadius: '20px',
+              fontSize: '0.85rem',
+              color: '#e6c8a2',
+              fontWeight: '600'
+            }}>
+              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#81c784' }}></span>
+              Now Booking: <strong style={{ color: '#ffffff' }}>{activeBatchName}</strong>
+            </div>
+          )}
         </header>
 
         {announcement && announcement.isActive && announcement.text && (
@@ -1081,22 +1122,26 @@ export default function PreorderPage() {
               <span>🍪</span> Cookie Menu
             </h2>
             <div className={styles.menuGrid}>
-              {[
-                { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: COOKIE_PRICES.classic_chocolate_chip },
-                { key: 'double_chocolate', name: 'Double Chocolate', price: COOKIE_PRICES.double_chocolate },
-                { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: COOKIE_PRICES.chocolate_chip_walnut },
-                { key: 'cookies_cream', name: 'Cookies & Cream', price: COOKIE_PRICES.cookies_cream },
-                { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: COOKIE_PRICES.kunafa_chocolate },
-                { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: COOKIE_PRICES.hazelnut_filled },
-                { key: 'lotus_lava', name: 'Lotus Lava', price: COOKIE_PRICES.lotus_lava },
-              ].map((item) => {
+              {(menuItems.length > 0
+                ? menuItems.filter((i) => i.is_active !== false && i.key !== 'classic_bundle' && i.key !== 'premium_bundle')
+                : [
+                    { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: 580 },
+                    { key: 'double_chocolate', name: 'Double Chocolate', price: 580 },
+                    { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: 580 },
+                    { key: 'cookies_cream', name: 'Cookies & Cream', price: 620 },
+                    { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: 620 },
+                    { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: 620 },
+                    { key: 'lotus_lava', name: 'Lotus Lava', price: 620 },
+                  ]
+              ).map((item) => {
                 const soldOut = isSoldOut(item.key);
-                const stockVal = stockStatus[item.key]?.available ?? 0;
+                const stockVal = stockStatus[item.key]?.available ?? item.available ?? 0;
+                const currentPrice = getItemPrice(item.key);
                 return (
                   <div key={item.key} className={`${styles.menuItem} ${soldOut ? styles.menuItemSoldOut : ''}`}>
                     <div className={styles.cookieInfo}>
                       <span className={styles.cookieName}>{item.name}</span>
-                      <span className={styles.cookiePrice}>PKR {item.price} each</span>
+                      <span className={styles.cookiePrice}>PKR {currentPrice} each</span>
                       {stockStatus[item.key] && (
                         <span style={{ fontSize: '0.8rem', color: soldOut ? '#ff5252' : '#b3c4e6', fontWeight: 600 }}>
                           {soldOut ? 'Sold Out' : `${stockVal} remaining`}
@@ -1107,13 +1152,13 @@ export default function PreorderPage() {
                     <div className={styles.counter}>
                       <button
                         type="button"
-                        disabled={quantities[item.key] === 0}
+                        disabled={(quantities[item.key] || 0) === 0}
                         onClick={() => adjustQuantity(item.key, -1)}
                         className={styles.counterBtn}
                       >
                         -
                       </button>
-                      <span className={styles.counterVal}>{quantities[item.key]}</span>
+                      <span className={styles.counterVal}>{quantities[item.key] || 0}</span>
                       <button
                         type="button"
                         disabled={soldOut}
@@ -1127,125 +1172,137 @@ export default function PreorderPage() {
                 );
               })}
 
-              {/* Item 8: Classic Bundle */}
-              <div className={`${styles.menuItem} ${isSoldOut('classic_bundle') ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Classic Bundle (pack of 4)</span>
-                  <span className={styles.cookiePrice}>PKR {COOKIE_PRICES.classic_bundle}</span>
-                  <span style={{ fontSize: '0.8rem', color: '#b3c4e6' }}>Select 4 classic flavours below</span>
-                  {isSoldOut('classic_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.classic_bundle === 0}
-                    onClick={() => adjustQuantity('classic_bundle', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.classic_bundle}</span>
-                  <button
-                    type="button"
-                    disabled={isSoldOut('classic_bundle')}
-                    onClick={() => adjustQuantity('classic_bundle', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-
-                {quantities.classic_bundle > 0 && (
-                  <div className={styles.bundleDetails}>
-                    <p className={styles.bundleHeading}>Select Classic Bundle Flavours</p>
-                    {Array.from({ length: quantities.classic_bundle }).map((_, bIdx) => (
-                      <div key={bIdx} style={{ marginBottom: '12px' }}>
-                        <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#f5cf73' }}>
-                          Pack #{bIdx + 1}
-                        </p>
-                        <div className={styles.bundleGrid}>
-                          {Array.from({ length: 4 }).map((_, cIdx) => (
-                            <div key={cIdx} className={styles.bundleSelectGroup}>
-                              <span className={styles.bundleSelectLabel}>Cookie {cIdx + 1}</span>
-                              <select
-                                className={styles.select}
-                                value={classicBundleChoices[bIdx]?.[cIdx] || CLASSIC_FLAVORS[0]}
-                                onChange={(e) => updateBundleFlavor('classic', bIdx, cIdx, e.target.value)}
-                              >
-                                {CLASSIC_FLAVORS.map((f) => (
-                                  <option key={f} value={f}>
-                                    {f}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+              {/* Item: Classic Bundle */}
+              {stockStatus.classic_bundle?.is_active !== false && (
+                <div className={`${styles.menuItem} ${isSoldOut('classic_bundle') ? styles.menuItemSoldOut : ''}`}>
+                  <div className={styles.cookieInfo}>
+                    <span className={styles.cookieName}>Classic Bundle (pack of 4)</span>
+                    <span className={styles.cookiePrice}>PKR {getItemPrice('classic_bundle')}</span>
+                    <span style={{ fontSize: '0.8rem', color: '#b3c4e6' }}>Select 4 classic flavours below</span>
+                    {isSoldOut('classic_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
                   </div>
-                )}
-              </div>
-
-              {/* Item 9: Premium Bundle */}
-              <div className={`${styles.menuItem} ${isSoldOut('premium_bundle') ? styles.menuItemSoldOut : ''}`}>
-                <div className={styles.cookieInfo}>
-                  <span className={styles.cookieName}>Premium Bundle (pack of 4)</span>
-                  <span className={styles.cookiePrice}>PKR {COOKIE_PRICES.premium_bundle}</span>
-                  <span style={{ fontSize: '0.8rem', color: '#b3c4e6' }}>Select 4 premium flavours below</span>
-                  {isSoldOut('premium_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
-                </div>
-                <div className={styles.counter}>
-                  <button
-                    type="button"
-                    disabled={quantities.premium_bundle === 0}
-                    onClick={() => adjustQuantity('premium_bundle', -1)}
-                    className={styles.counterBtn}
-                  >
-                    -
-                  </button>
-                  <span className={styles.counterVal}>{quantities.premium_bundle}</span>
-                  <button
-                    type="button"
-                    disabled={isSoldOut('premium_bundle')}
-                    onClick={() => adjustQuantity('premium_bundle', 1)}
-                    className={styles.counterBtn}
-                  >
-                    +
-                  </button>
-                </div>
-
-                {quantities.premium_bundle > 0 && (
-                  <div className={styles.bundleDetails}>
-                    <p className={styles.bundleHeading}>Select Premium Bundle Flavours</p>
-                    {Array.from({ length: quantities.premium_bundle }).map((_, bIdx) => (
-                      <div key={bIdx} style={{ marginBottom: '12px' }}>
-                        <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#f5cf73' }}>
-                          Pack #{bIdx + 1}
-                        </p>
-                        <div className={styles.bundleGrid}>
-                          {Array.from({ length: 4 }).map((_, cIdx) => (
-                            <div key={cIdx} className={styles.bundleSelectGroup}>
-                              <span className={styles.bundleSelectLabel}>Cookie {cIdx + 1}</span>
-                              <select
-                                className={styles.select}
-                                value={premiumBundleChoices[bIdx]?.[cIdx] || PREMIUM_FLAVORS[0]}
-                                onChange={(e) => updateBundleFlavor('premium', bIdx, cIdx, e.target.value)}
-                              >
-                                {PREMIUM_FLAVORS.map((f) => (
-                                  <option key={f} value={f}>
-                                    {f}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                  <div className={styles.counter}>
+                    <button
+                      type="button"
+                      disabled={(quantities.classic_bundle || 0) === 0}
+                      onClick={() => adjustQuantity('classic_bundle', -1)}
+                      className={styles.counterBtn}
+                    >
+                      -
+                    </button>
+                    <span className={styles.counterVal}>{quantities.classic_bundle || 0}</span>
+                    <button
+                      type="button"
+                      disabled={isSoldOut('classic_bundle')}
+                      onClick={() => adjustQuantity('classic_bundle', 1)}
+                      className={styles.counterBtn}
+                    >
+                      +
+                    </button>
                   </div>
-                )}
-              </div>
+
+                  {quantities.classic_bundle > 0 && (
+                    <div className={styles.bundleDetails}>
+                      <p className={styles.bundleHeading}>Select Classic Bundle Flavours</p>
+                      {Array.from({ length: quantities.classic_bundle }).map((_, bIdx) => {
+                        const dynamicClassic = menuItems.filter((i) => (i.category === 'classic' || i.key.startsWith('classic') || i.key === 'chocolate_chip_walnut') && i.is_active !== false).map((i) => i.name);
+                        const classicOptions = dynamicClassic.length > 0 ? dynamicClassic : CLASSIC_FLAVORS;
+                        return (
+                          <div key={bIdx} style={{ marginBottom: '12px' }}>
+                            <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#f5cf73' }}>
+                              Pack #{bIdx + 1}
+                            </p>
+                            <div className={styles.bundleGrid}>
+                              {Array.from({ length: 4 }).map((_, cIdx) => (
+                                <div key={cIdx} className={styles.bundleSelectGroup}>
+                                  <span className={styles.bundleSelectLabel}>Cookie {cIdx + 1}</span>
+                                  <select
+                                    className={styles.select}
+                                    value={classicBundleChoices[bIdx]?.[cIdx] || classicOptions[0]}
+                                    onChange={(e) => updateBundleFlavor('classic', bIdx, cIdx, e.target.value)}
+                                  >
+                                    {classicOptions.map((f) => (
+                                      <option key={f} value={f}>
+                                        {f}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Item: Premium Bundle */}
+              {stockStatus.premium_bundle?.is_active !== false && (
+                <div className={`${styles.menuItem} ${isSoldOut('premium_bundle') ? styles.menuItemSoldOut : ''}`}>
+                  <div className={styles.cookieInfo}>
+                    <span className={styles.cookieName}>Premium Bundle (pack of 4)</span>
+                    <span className={styles.cookiePrice}>PKR {getItemPrice('premium_bundle')}</span>
+                    <span style={{ fontSize: '0.8rem', color: '#b3c4e6' }}>Select 4 premium flavours below</span>
+                    {isSoldOut('premium_bundle') && <span className={styles.soldOutBadge}>SOLD OUT</span>}
+                  </div>
+                  <div className={styles.counter}>
+                    <button
+                      type="button"
+                      disabled={(quantities.premium_bundle || 0) === 0}
+                      onClick={() => adjustQuantity('premium_bundle', -1)}
+                      className={styles.counterBtn}
+                    >
+                      -
+                    </button>
+                    <span className={styles.counterVal}>{quantities.premium_bundle || 0}</span>
+                    <button
+                      type="button"
+                      disabled={isSoldOut('premium_bundle')}
+                      onClick={() => adjustQuantity('premium_bundle', 1)}
+                      className={styles.counterBtn}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  {quantities.premium_bundle > 0 && (
+                    <div className={styles.bundleDetails}>
+                      <p className={styles.bundleHeading}>Select Premium Bundle Flavours</p>
+                      {Array.from({ length: quantities.premium_bundle }).map((_, bIdx) => {
+                        const dynamicPremium = menuItems.filter((i) => (i.category === 'premium' || (!i.key.startsWith('classic') && i.key !== 'chocolate_chip_walnut')) && i.is_active !== false).map((i) => i.name);
+                        const premiumOptions = dynamicPremium.length > 0 ? dynamicPremium : PREMIUM_FLAVORS;
+                        return (
+                          <div key={bIdx} style={{ marginBottom: '12px' }}>
+                            <p style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 5px 0', color: '#f5cf73' }}>
+                              Pack #{bIdx + 1}
+                            </p>
+                            <div className={styles.bundleGrid}>
+                              {Array.from({ length: 4 }).map((_, cIdx) => (
+                                <div key={cIdx} className={styles.bundleSelectGroup}>
+                                  <span className={styles.bundleSelectLabel}>Cookie {cIdx + 1}</span>
+                                  <select
+                                    className={styles.select}
+                                    value={premiumBundleChoices[bIdx]?.[cIdx] || premiumOptions[0]}
+                                    onChange={(e) => updateBundleFlavor('premium', bIdx, cIdx, e.target.value)}
+                                  >
+                                    {premiumOptions.map((f) => (
+                                      <option key={f} value={f}>
+                                        {f}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1363,15 +1420,18 @@ export default function PreorderPage() {
                   if (qty <= 0) return null;
                   
                   // Make human-friendly name
-                  const displayName = item
-                    .split('_')
-                    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ')
-                    .replace('Cookies Cream', 'Cookies & Cream')
-                    .replace('Classic Bundle', 'Classic Bundle (Pack of 4)')
-                    .replace('Premium Bundle', 'Premium Bundle (Pack of 4)');
+                  const displayName =
+                    stockStatus[item]?.flavor_name ||
+                    stockStatus[item]?.name ||
+                    item
+                      .split('_')
+                      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join(' ')
+                      .replace('Cookies Cream', 'Cookies & Cream')
+                      .replace('Classic Bundle', 'Classic Bundle (Pack of 4)')
+                      .replace('Premium Bundle', 'Premium Bundle (Pack of 4)');
 
-                  const itemTotal = qty * COOKIE_PRICES[item];
+                  const itemTotal = qty * getItemPrice(item);
                   return (
                     <div key={item} className={styles.summaryRow} style={{ fontSize: '0.85rem', color: '#d1ddf7', margin: '3px 0' }}>
                       <span>

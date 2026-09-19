@@ -21,7 +21,7 @@ export async function POST(request) {
     const deliveryZip = formData.get('deliveryZip') || null;
     const deliveryLandmark = formData.get('deliveryLandmark') || null;
 
-    // Extract quantities
+    // Extract quantities for standard cookies
     const classicChocolateChipQty = parseInt(formData.get('classicChocolateChipQty') || '0', 10);
     const doubleChocolateQty = parseInt(formData.get('doubleChocolateQty') || '0', 10);
     const chocolateChipWalnutQty = parseInt(formData.get('chocolateChipWalnutQty') || '0', 10);
@@ -33,6 +33,17 @@ export async function POST(request) {
     const classicBundleFlavours = formData.get('classicBundleFlavours') || null;
     const premiumBundleQty = parseInt(formData.get('premiumBundleQty') || '0', 10);
     const premiumBundleFlavours = formData.get('premiumBundleFlavours') || null;
+
+    // Extract dynamic items JSON if provided
+    let dynamicItems = {};
+    const itemsJsonRaw = formData.get('itemsJson');
+    if (itemsJsonRaw) {
+      try {
+        dynamicItems = JSON.parse(itemsJsonRaw);
+      } catch (e) {
+        console.warn('Failed to parse itemsJson:', e);
+      }
+    }
 
     // Extract total amount & payment proof file
     const totalAmount = parseFloat(formData.get('totalAmount') || '0');
@@ -78,7 +89,6 @@ export async function POST(request) {
     }
 
     // 2. Email verification check
-    // Accept if email exists in orders table (returning customer) OR email_verifications table (verified = true)
     const cleanEmail = email.trim().toLowerCase();
 
     const { data: existingOrders } = await supabaseAdmin
@@ -103,7 +113,23 @@ export async function POST(request) {
       );
     }
 
-    // 3. Calculate stock deductions (combining individual and bundle cookie selections)
+    // Fetch active batch name
+    let activeBatchName = 'Pre-Order 1';
+    try {
+      const { data: bData } = await supabaseAdmin
+        .from('settings')
+        .select('value')
+        .eq('key', 'preorder_batches')
+        .single();
+      if (bData && bData.value) {
+        const active = (bData.value.batches || []).find((b) => b.id === bData.value.activeBatchId);
+        if (active) activeBatchName = active.name;
+      }
+    } catch (bErr) {
+      // default to Pre-Order 1
+    }
+
+    // 3. Calculate stock deductions
     const deductions = {
       classic_chocolate_chip: classicChocolateChipQty,
       double_chocolate: doubleChocolateQty,
@@ -111,7 +137,8 @@ export async function POST(request) {
       cookies_cream: cookiesCreamQty,
       kunafa_chocolate: kunafaChocolateQty,
       hazelnut_filled: hazelnutFilledQty,
-      lotus_lava: lotusLavaQty
+      lotus_lava: lotusLavaQty,
+      ...dynamicItems,
     };
 
     const mapFriendlyToKey = (name) => {
@@ -127,14 +154,14 @@ export async function POST(request) {
     };
 
     if (classicBundleQty > 0 && classicBundleFlavours) {
-      classicBundleFlavours.split(',').forEach(flv => {
+      classicBundleFlavours.split(',').forEach((flv) => {
         const key = mapFriendlyToKey(flv);
         if (key) deductions[key] = (deductions[key] || 0) + classicBundleQty;
       });
     }
 
     if (premiumBundleQty > 0 && premiumBundleFlavours) {
-      premiumBundleFlavours.split(',').forEach(flv => {
+      premiumBundleFlavours.split(',').forEach((flv) => {
         const key = mapFriendlyToKey(flv);
         if (key) deductions[key] = (deductions[key] || 0) + premiumBundleQty;
       });
@@ -147,8 +174,7 @@ export async function POST(request) {
     const fileName = `${timestamp}_${safeEmailFilename}.${fileExtension}`;
     const fileBuffer = Buffer.from(await paymentProof.arrayBuffer());
 
-    // Upload to 'payment-proofs' bucket
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from('payment-proofs')
       .upload(fileName, fileBuffer, {
         contentType: paymentProof.type,
@@ -164,54 +190,138 @@ export async function POST(request) {
       );
     }
 
-    // Get Public URL
     const { data: publicUrlData } = supabaseAdmin.storage
       .from('payment-proofs')
       .getPublicUrl(fileName);
 
     const paymentProofUrl = publicUrlData.publicUrl;
 
-    // 5. Save order details in DB and deduct stock inside a transaction
-    const { data: rpcResult, error: orderError } = await supabaseAdmin.rpc('place_order_with_stock', {
-      p_first_name: firstName,
-      p_last_name: lastName,
-      p_email: email,
-      p_phone: phone,
-      p_order_type: orderType,
-      p_delivery_street: orderType === 'delivery' ? deliveryStreet : null,
-      p_delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
-      p_delivery_city: orderType === 'delivery' ? deliveryCity : null,
-      p_delivery_state: orderType === 'delivery' ? deliveryState : null,
-      p_delivery_zip: orderType === 'delivery' ? deliveryZip : null,
-      p_delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
-      p_classic_chocolate_chip_qty: classicChocolateChipQty,
-      p_double_chocolate_qty: doubleChocolateQty,
-      p_chocolate_chip_walnut_qty: chocolateChipWalnutQty,
-      p_cookies_cream_qty: cookiesCreamQty,
-      p_kunafa_chocolate_qty: kunafaChocolateQty,
-      p_hazelnut_filled_qty: hazelnutFilledQty,
-      p_lotus_lava_qty: lotusLavaQty,
-      p_classic_bundle_qty: classicBundleQty,
-      p_classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
-      p_premium_bundle_qty: premiumBundleQty,
-      p_premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
-      p_total_amount: totalAmount,
-      p_payment_proof_url: paymentProofUrl,
-      p_deductions: deductions
-    });
+    // 5. Save order details in DB and deduct stock inside a transaction or direct fallback
+    let rpcResult = null;
+    let orderError = null;
 
-    if (orderError || !rpcResult || !rpcResult.success) {
-      const errMsg = orderError?.message || rpcResult?.error || 'Database error processing order.';
-      console.error('Order creation via RPC error:', orderError, rpcResult);
-      return NextResponse.json(
-        { error: errMsg.includes('out of stock') ? errMsg : 'Failed to submit preorder. Stock validation failed or database error.' },
-        { status: 500 }
-      );
+    try {
+      const res = await supabaseAdmin.rpc('place_order_with_stock', {
+        p_first_name: firstName,
+        p_last_name: lastName,
+        p_email: email,
+        p_phone: phone,
+        p_order_type: orderType,
+        p_delivery_street: orderType === 'delivery' ? deliveryStreet : null,
+        p_delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
+        p_delivery_city: orderType === 'delivery' ? deliveryCity : null,
+        p_delivery_state: orderType === 'delivery' ? deliveryState : null,
+        p_delivery_zip: orderType === 'delivery' ? deliveryZip : null,
+        p_delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
+        p_classic_chocolate_chip_qty: classicChocolateChipQty,
+        p_double_chocolate_qty: doubleChocolateQty,
+        p_chocolate_chip_walnut_qty: chocolateChipWalnutQty,
+        p_cookies_cream_qty: cookiesCreamQty,
+        p_kunafa_chocolate_qty: kunafaChocolateQty,
+        p_hazelnut_filled_qty: hazelnutFilledQty,
+        p_lotus_lava_qty: lotusLavaQty,
+        p_classic_bundle_qty: classicBundleQty,
+        p_classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
+        p_premium_bundle_qty: premiumBundleQty,
+        p_premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
+        p_total_amount: totalAmount,
+        p_payment_proof_url: paymentProofUrl,
+        p_deductions: deductions,
+      });
+      rpcResult = res.data;
+      orderError = res.error;
+    } catch (e) {
+      orderError = e;
     }
 
-    const orderId = rpcResult.order_id;
+    let orderId = rpcResult?.order_id;
 
-    // 6. Ensure email verification record is kept so returning customers do not need OTP for future orders
+    // Direct fallback if RPC failed (e.g. if custom menu items are present or RPC not installed)
+    if (!orderId || orderError || !rpcResult?.success) {
+      // Validate and deduct stock directly
+      for (const [key, qty] of Object.entries(deductions)) {
+        if (qty > 0) {
+          const { data: stockRow } = await supabaseAdmin
+            .from('cookie_stock')
+            .select('available_stock, flavor_name')
+            .eq('flavor_key', key)
+            .single();
+
+          if (stockRow && stockRow.available_stock < qty) {
+            return NextResponse.json(
+              { error: `Sorry, we are out of stock for ${stockRow.flavor_name}! (Requested ${qty}, only ${stockRow.available_stock} left)` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+
+      for (const [key, qty] of Object.entries(deductions)) {
+        if (qty > 0) {
+          const { data: stockRow } = await supabaseAdmin
+            .from('cookie_stock')
+            .select('available_stock')
+            .eq('flavor_key', key)
+            .single();
+
+          if (stockRow) {
+            await supabaseAdmin
+              .from('cookie_stock')
+              .update({ available_stock: Math.max(0, stockRow.available_stock - qty) })
+              .eq('flavor_key', key);
+          }
+        }
+      }
+
+      const orderData = {
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone,
+        order_type: orderType,
+        delivery_street: orderType === 'delivery' ? deliveryStreet : null,
+        delivery_street2: orderType === 'delivery' ? deliveryStreet2 : null,
+        delivery_city: orderType === 'delivery' ? deliveryCity : null,
+        delivery_state: orderType === 'delivery' ? deliveryState : null,
+        delivery_zip: orderType === 'delivery' ? deliveryZip : null,
+        delivery_landmark: orderType === 'delivery' ? deliveryLandmark : null,
+        classic_chocolate_chip_qty: classicChocolateChipQty,
+        double_chocolate_qty: doubleChocolateQty,
+        chocolate_chip_walnut_qty: chocolateChipWalnutQty,
+        cookies_cream_qty: cookiesCreamQty,
+        kunafa_chocolate_qty: kunafaChocolateQty,
+        hazelnut_filled_qty: hazelnutFilledQty,
+        lotus_lava_qty: lotusLavaQty,
+        classic_bundle_qty: classicBundleQty,
+        classic_bundle_flavours: classicBundleQty > 0 ? classicBundleFlavours : null,
+        premium_bundle_qty: premiumBundleQty,
+        premium_bundle_flavours: premiumBundleQty > 0 ? premiumBundleFlavours : null,
+        total_amount: totalAmount,
+        payment_proof_url: paymentProofUrl,
+        payment_status: 'pending',
+        order_status: 'received',
+      };
+
+      let insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: activeBatchName }).select('id').single();
+      if (insRes.error && insRes.error.message?.includes('batch_name')) {
+        insRes = await supabaseAdmin.from('orders').insert(orderData).select('id').single();
+      }
+
+      if (insRes.error) {
+        console.error('Direct order insert error:', insRes.error);
+        return NextResponse.json({ error: 'Failed to submit preorder. Database error.' }, { status: 500 });
+      }
+      orderId = insRes.data?.id;
+    } else {
+      // Update batch_name if RPC succeeded
+      try {
+        await supabaseAdmin.from('orders').update({ batch_name: activeBatchName }).eq('id', orderId);
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    // 6. Ensure email verification record is kept
     await supabaseAdmin
       .from('email_verifications')
       .update({ verified: true })
@@ -226,52 +336,61 @@ export async function POST(request) {
     if (kunafaChocolateQty > 0) itemsList.push(`<li>Kunafa Chocolate x ${kunafaChocolateQty} (${kunafaChocolateQty * 620} PKR)</li>`);
     if (hazelnutFilledQty > 0) itemsList.push(`<li>Hazelnut Filled x ${hazelnutFilledQty} (${hazelnutFilledQty * 620} PKR)</li>`);
     if (lotusLavaQty > 0) itemsList.push(`<li>Lotus Lava x ${lotusLavaQty} (${lotusLavaQty * 620} PKR)</li>`);
+
+    // Add any dynamic items
+    for (const [dKey, dQty] of Object.entries(dynamicItems)) {
+      if (dQty > 0 && !['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(dKey)) {
+        itemsList.push(`<li>${dKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} x ${dQty}</li>`);
+      }
+    }
+
     if (classicBundleQty > 0) itemsList.push(`<li>Classic Bundle (pack of 4) x ${classicBundleQty} (${classicBundleQty * 2200} PKR)<br/><small style="color: #666;">Flavours: ${classicBundleFlavours}</small></li>`);
     if (premiumBundleQty > 0) itemsList.push(`<li>Premium Bundle (pack of 4) x ${premiumBundleQty} (${premiumBundleQty * 2400} PKR)<br/><small style="color: #666;">Flavours: ${premiumBundleFlavours}</small></li>`);
 
-    const { error: mailError } = await resend.emails.send({
-      from: 'Cafe Esero <noreply@itsahmed.tech>',
-      to: email,
-      subject: `🍪 Preorder Received! - Ref: #${orderId.substring(0, 8)}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; background-color: #faf6f0; padding: 40px; color: #4a2c11; max-width: 600px; margin: 0 auto; border: 1px solid #e6d3c0; border-radius: 12px;">
-          <h2 style="color: #6d4c41; text-align: center; margin-bottom: 5px;">Cafe Esero × Crumble Cookie</h2>
-          <p style="color: #8d6e63; font-style: italic; text-align: center; margin-top: 0;">Your preorder has been recorded!</p>
-          <hr style="border: 0; border-top: 1px solid #e6d3c0; margin: 20px 0;"/>
-          
-          <p>Hi ${firstName} ${lastName},</p>
-          <p>Thank you for placing your Crumble Cookie preorder with Cafe Esero! We have received your preorder details and your payment receipt.</p>
-          
-          <div style="background-color: #ffffff; border: 1px solid #f0e2d5; border-radius: 8px; padding: 20px; margin: 20px 0;">
-            <h3 style="color: #5d4037; margin-top: 0;">Order Summary</h3>
-            <p style="font-size: 14px; margin: 5px 0;"><strong>Order ID:</strong> #${orderId.substring(0, 8).toUpperCase()}</p>
-            <p style="font-size: 14px; margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-            <p style="font-size: 14px; margin: 5px 0;"><strong>Delivery Mode:</strong> ${orderType.toUpperCase()}</p>
-            ${orderType === 'delivery' ? `<p style="font-size: 14px; margin: 5px 0;"><strong>Address:</strong> ${deliveryStreet}, ${deliveryCity}</p>` : ''}
+    try {
+      await resend.emails.send({
+        from: 'Cafe Esero <noreply@itsahmed.tech>',
+        to: email,
+        subject: `🍪 Preorder Received! - Ref: #${orderId.substring(0, 8)} (${activeBatchName})`,
+        html: `
+          <div style="font-family: Arial, sans-serif; background-color: #faf6f0; padding: 40px; color: #4a2c11; max-width: 600px; margin: 0 auto; border: 1px solid #e6d3c0; border-radius: 12px;">
+            <h2 style="color: #6d4c41; text-align: center; margin-bottom: 5px;">Cafe Esero × Crumble Cookie</h2>
+            <p style="color: #8d6e63; font-style: italic; text-align: center; margin-top: 0;">Your preorder has been recorded for <strong>${activeBatchName}</strong>!</p>
+            <hr style="border: 0; border-top: 1px solid #e6d3c0; margin: 20px 0;"/>
             
-            <h4 style="color: #5d4037; border-bottom: 1px dashed #e6d3c0; padding-bottom: 5px; margin-bottom: 10px;">Items Ordered</h4>
-            <ul style="padding-left: 20px; font-size: 14px; line-height: 1.6; margin: 0;">
-              ${itemsList.join('')}
-            </ul>
-            <p style="font-size: 16px; font-weight: bold; margin-top: 15px; margin-bottom: 0; text-align: right; color: #3e2723;">
-              Total Paid: ${totalAmount.toLocaleString()} PKR
+            <p>Hi ${firstName} ${lastName},</p>
+            <p>Thank you for placing your Crumble Cookie preorder with Cafe Esero! We have received your preorder details and your payment receipt.</p>
+            
+            <div style="background-color: #ffffff; border: 1px solid #f0e2d5; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <h3 style="color: #5d4037; margin-top: 0;">Order Summary</h3>
+              <p style="font-size: 14px; margin: 5px 0;"><strong>Order ID:</strong> #${orderId.substring(0, 8).toUpperCase()}</p>
+              <p style="font-size: 14px; margin: 5px 0;"><strong>Preorder Round:</strong> ${activeBatchName}</p>
+              <p style="font-size: 14px; margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+              <p style="font-size: 14px; margin: 5px 0;"><strong>Delivery Mode:</strong> ${orderType.toUpperCase()}</p>
+              ${orderType === 'delivery' ? `<p style="font-size: 14px; margin: 5px 0;"><strong>Address:</strong> ${deliveryStreet}, ${deliveryCity}</p>` : ''}
+              
+              <h4 style="color: #5d4037; border-bottom: 1px dashed #e6d3c0; padding-bottom: 5px; margin-bottom: 10px;">Items Ordered</h4>
+              <ul style="padding-left: 20px; font-size: 14px; line-height: 1.6; margin: 0;">
+                ${itemsList.join('')}
+              </ul>
+              <p style="font-size: 16px; font-weight: bold; margin-top: 15px; margin-bottom: 0; text-align: right; color: #3e2723;">
+                Total Paid: ${totalAmount.toLocaleString()} PKR
+              </p>
+            </div>
+
+            <div style="background-color: #efebe9; border-radius: 8px; padding: 15px; border-left: 4px solid #8d6e63; font-size: 14px;">
+              <p style="margin: 0; font-weight: bold; color: #4e342e;">Payment Status: PENDING VERIFICATION</p>
+              <p style="margin: 5px 0 0 0; color: #5d4037;">Our admin team is currently verifying your payment transfer screenshot. You will receive another email as soon as your preorder is officially approved and confirmed!</p>
+            </div>
+
+            <p style="font-size: 14px; margin-top: 25px; line-height: 1.5;">
+              Warm regards,<br/>
+              <strong>Cafe Esero Team</strong>
             </p>
           </div>
-
-          <div style="background-color: #efebe9; border-radius: 8px; padding: 15px; border-left: 4px solid #8d6e63; font-size: 14px;">
-            <p style="margin: 0; font-weight: bold; color: #4e342e;">Payment Status: PENDING VERIFICATION</p>
-            <p style="margin: 5px 0 0 0; color: #5d4037;">Our admin team is currently verifying your payment transfer screenshot. You will receive another email as soon as your preorder is officially approved and confirmed!</p>
-          </div>
-
-          <p style="font-size: 14px; margin-top: 25px; line-height: 1.5;">
-            Warm regards,<br/>
-            <strong>Cafe Esero Team</strong>
-          </p>
-        </div>
-      `,
-    });
-
-    if (mailError) {
+        `,
+      });
+    } catch (mailError) {
       console.warn('Confirmation email sending warning:', mailError);
     }
 
