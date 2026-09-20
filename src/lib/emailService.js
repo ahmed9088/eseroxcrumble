@@ -83,6 +83,7 @@ export async function sendEmail({ to, subject, html, text }) {
   // Determine sender for Resend
   // Priority: RESEND_FROM_EMAIL -> itsahmed.tech custom domain -> onboarding@resend.dev
   const configuredFrom = process.env.RESEND_FROM_EMAIL || 'Cafe Esero <noreply@itsahmed.tech>';
+  const replyToAddress = process.env.REPLY_TO_EMAIL || process.env.GMAIL_USER || 'support@itsahmed.tech';
 
   try {
     console.log(`[EmailService] Attempting Resend send to ${to} from ${configuredFrom}...`);
@@ -92,6 +93,11 @@ export async function sendEmail({ to, subject, html, text }) {
       subject,
       html,
       text: text || html.replace(/<[^>]+>/g, ''),
+      replyTo: replyToAddress,
+      headers: {
+        'X-Priority': '1',
+        'Importance': 'high',
+      },
     });
 
     if (error) {
@@ -116,6 +122,11 @@ export async function sendEmail({ to, subject, html, text }) {
           subject,
           html,
           text: text || html.replace(/<[^>]+>/g, ''),
+          replyTo: replyToAddress,
+          headers: {
+            'X-Priority': '1',
+            'Importance': 'high',
+          },
         });
 
         if (!fallbackResult.error) {
