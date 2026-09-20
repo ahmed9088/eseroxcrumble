@@ -1,4 +1,4 @@
-import { resend } from '../../../../lib/resend';
+import { sendEmail } from '../../../../lib/emailService';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { NextResponse } from 'next/server';
 
@@ -348,8 +348,7 @@ export async function POST(request) {
     if (premiumBundleQty > 0) itemsList.push(`<li>Premium Bundle (pack of 4) x ${premiumBundleQty} (${premiumBundleQty * 2400} PKR)<br/><small style="color: #666;">Flavours: ${premiumBundleFlavours}</small></li>`);
 
     try {
-      await resend.emails.send({
-        from: 'Cafe Esero <noreply@itsahmed.tech>',
+      await sendEmail({
         to: email,
         subject: `🍪 Preorder Received! - Ref: #${orderId.substring(0, 8)} (${activeBatchName})`,
         html: `

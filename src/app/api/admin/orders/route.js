@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { resend } from '../../../../lib/resend';
+import { sendEmail } from '../../../../lib/emailService';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { NextResponse } from 'next/server';
 
@@ -226,8 +226,7 @@ export async function PUT(request) {
       
       if (paymentStatus === 'approved') {
         try {
-          await resend.emails.send({
-            from: 'Cafe Esero <noreply@itsahmed.tech>',
+          await sendEmail({
             to: order.email,
             subject: `✅ Preorder Confirmed! - Ref: #${refId}`,
             html: `
@@ -264,8 +263,7 @@ export async function PUT(request) {
         }
       } else if (paymentStatus === 'rejected') {
         try {
-          await resend.emails.send({
-            from: 'Cafe Esero <noreply@itsahmed.tech>',
+          await sendEmail({
             to: order.email,
             subject: `❌ Preorder Payment Declined - Ref: #${refId}`,
             html: `
