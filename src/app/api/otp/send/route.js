@@ -100,7 +100,7 @@ export async function POST(request) {
     // Send email using Universal Email Service
     const emailResult = await sendEmail({
       to: cleanEmail,
-      subject: '🔑 Your Verification Code - Cafe Esero Preorder',
+      subject: `Your Cafe Esero Verification Code: ${code}`,
       html: emailHtml,
       text: `Your Cafe Esero verification code is: ${code}. It expires in 10 minutes.`,
     });
