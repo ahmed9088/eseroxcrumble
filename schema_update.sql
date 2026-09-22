@@ -53,3 +53,15 @@ values (
   }'::jsonb
 )
 on conflict (key) do nothing;
+
+-- 4. Add items_breakdown JSONB column to orders table to store full itemized snapshots (including dynamic menu items like Crumble Pot)
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns 
+    where table_name = 'orders' and column_name = 'items_breakdown'
+  ) then
+    alter table public.orders add column items_breakdown jsonb;
+  end if;
+end $$;
+

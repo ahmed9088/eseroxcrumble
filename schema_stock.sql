@@ -53,7 +53,8 @@ create or replace function public.place_order_with_stock(
   p_premium_bundle_flavours text,
   p_total_amount numeric,
   p_payment_proof_url text,
-  p_deductions jsonb
+  p_deductions jsonb,
+  p_items_breakdown jsonb default null
 )
 returns json as $$
 declare
@@ -102,7 +103,8 @@ begin
     cookies_cream_qty, kunafa_chocolate_qty, hazelnut_filled_qty, lotus_lava_qty,
     classic_bundle_qty, classic_bundle_flavours,
     premium_bundle_qty, premium_bundle_flavours,
-    total_amount, payment_proof_url, payment_status, order_status
+    total_amount, payment_proof_url, payment_status, order_status,
+    items_breakdown
   ) values (
     p_first_name, p_last_name, p_email, p_phone, p_order_type,
     p_delivery_street, p_delivery_street2, p_delivery_city, p_delivery_state, p_delivery_zip, p_delivery_landmark,
@@ -110,7 +112,8 @@ begin
     p_cookies_cream_qty, p_kunafa_chocolate_qty, p_hazelnut_filled_qty, p_lotus_lava_qty,
     p_classic_bundle_qty, p_classic_bundle_flavours,
     p_premium_bundle_qty, p_premium_bundle_flavours,
-    p_total_amount, p_payment_proof_url, 'pending', 'received'
+    p_total_amount, p_payment_proof_url, 'pending', 'received',
+    p_items_breakdown
   ) returning id into r_order_id;
 
   return json_build_object('success', true, 'order_id', r_order_id);

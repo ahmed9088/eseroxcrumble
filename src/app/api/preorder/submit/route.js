@@ -332,9 +332,14 @@ export async function POST(request) {
         payment_proof_url: paymentProofUrl,
         payment_status: 'pending',
         order_status: 'received',
+        items_breakdown: itemsBreakdown,
       };
 
       let insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: activeBatchName }).select('id').single();
+      if (insRes.error && insRes.error.message?.includes('items_breakdown')) {
+        delete orderData.items_breakdown;
+        insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: activeBatchName }).select('id').single();
+      }
       if (insRes.error && insRes.error.message?.includes('batch_name')) {
         insRes = await supabaseAdmin.from('orders').insert(orderData).select('id').single();
       }
@@ -345,11 +350,21 @@ export async function POST(request) {
       }
       orderId = insRes.data?.id;
     } else {
-      // Update batch_name if RPC succeeded
+      // Update batch_name and items_breakdown if RPC succeeded
       try {
-        await supabaseAdmin.from('orders').update({ batch_name: activeBatchName }).eq('id', orderId);
+        const { error: updErr } = await supabaseAdmin
+          .from('orders')
+          .update({ batch_name: activeBatchName, items_breakdown: itemsBreakdown })
+          .eq('id', orderId);
+        if (updErr && updErr.message?.includes('items_breakdown')) {
+          await supabaseAdmin.from('orders').update({ batch_name: activeBatchName }).eq('id', orderId);
+        }
       } catch (err) {
-        // ignore
+        try {
+          await supabaseAdmin.from('orders').update({ batch_name: activeBatchName }).eq('id', orderId);
+        } catch (e2) {
+          // ignore
+        }
       }
     }
 

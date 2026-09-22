@@ -96,7 +96,9 @@ export async function PUT(request) {
       deliveryZip,
       deliveryLandmark,
       paymentProofUrl,
-      totalAmount
+      totalAmount,
+      itemsBreakdown,
+      items_breakdown,
     } = await request.json();
 
     if (!orderId) {
@@ -198,6 +200,9 @@ export async function PUT(request) {
     if (totalAmount !== undefined && totalAmount !== null && !isNaN(parseFloat(totalAmount))) {
       updates.total_amount = parseFloat(totalAmount);
     }
+    if (itemsBreakdown !== undefined || items_breakdown !== undefined) {
+      updates.items_breakdown = itemsBreakdown !== undefined ? itemsBreakdown : items_breakdown;
+    }
 
     let { data: updatedOrder, error: updateError } = await supabaseAdmin
       .from('orders')
@@ -206,9 +211,10 @@ export async function PUT(request) {
       .select()
       .single();
 
-    // If batch_name column doesn't exist yet, retry without batch_name
-    if (updateError && updateError.message?.includes('batch_name')) {
-      delete updates.batch_name;
+    // If batch_name or items_breakdown column doesn't exist yet, retry gracefully
+    if (updateError && (updateError.message?.includes('batch_name') || updateError.message?.includes('items_breakdown'))) {
+      if (updateError.message?.includes('items_breakdown')) delete updates.items_breakdown;
+      if (updateError.message?.includes('batch_name')) delete updates.batch_name;
       const retry = await supabaseAdmin
         .from('orders')
         .update(updates)
@@ -487,6 +493,8 @@ export async function POST(request) {
       paymentProofUrl = 'created_by_admin',
       paymentStatus = 'approved',
       orderStatus = 'received',
+      itemsBreakdown = [],
+      dynamicItems = {},
     } = body;
 
     // Calculate stock deductions
@@ -497,7 +505,8 @@ export async function POST(request) {
       cookies_cream: cookiesCreamQty,
       kunafa_chocolate: kunafaChocolateQty,
       hazelnut_filled: hazelnutFilledQty,
-      lotus_lava: lotusLavaQty
+      lotus_lava: lotusLavaQty,
+      ...dynamicItems,
     };
 
     const mapFriendlyToKey = (name) => {
@@ -632,10 +641,15 @@ export async function POST(request) {
         payment_proof_url: paymentProofUrl,
         payment_status: paymentStatus,
         order_status: orderStatus,
+        items_breakdown: itemsBreakdown,
       };
 
-      // Try inserting with batch_name
+      // Try inserting with batch_name & items_breakdown
       let insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: batchName }).select('id').single();
+      if (insRes.error && insRes.error.message?.includes('items_breakdown')) {
+        delete orderData.items_breakdown;
+        insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: batchName }).select('id').single();
+      }
       if (insRes.error && insRes.error.message?.includes('batch_name')) {
         insRes = await supabaseAdmin.from('orders').insert(orderData).select('id').single();
       }
@@ -650,8 +664,13 @@ export async function POST(request) {
         payment_status: paymentStatus,
         order_status: orderStatus,
         batch_name: batchName,
+        items_breakdown: itemsBreakdown,
       };
       let { error: uErr } = await supabaseAdmin.from('orders').update(finalUpdates).eq('id', orderId);
+      if (uErr && uErr.message?.includes('items_breakdown')) {
+        delete finalUpdates.items_breakdown;
+        uErr = (await supabaseAdmin.from('orders').update(finalUpdates).eq('id', orderId)).error;
+      }
       if (uErr && uErr.message?.includes('batch_name')) {
         delete finalUpdates.batch_name;
         await supabaseAdmin.from('orders').update(finalUpdates).eq('id', orderId);

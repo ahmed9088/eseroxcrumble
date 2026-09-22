@@ -82,6 +82,8 @@ export default function AdminPage() {
     deliveryLandmark: '',
     paymentProofUrl: '',
   });
+  const [editOrderItems, setEditOrderItems] = useState([]);
+  const [selectedAddItemKey, setSelectedAddItemKey] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
   // Custom Order Creation State
@@ -615,6 +617,9 @@ export default function AdminPage() {
   // Start editing selected order
   const startEditing = () => {
     if (!selectedOrder) return;
+    const initialItems = getOrderItemsList(selectedOrder);
+    setEditOrderItems(initialItems);
+    setSelectedAddItemKey('');
     setEditForm({
       batchName: selectedOrder.batch_name || 'Pre-Order 1',
       firstName: selectedOrder.first_name || '',
@@ -632,6 +637,58 @@ export default function AdminPage() {
       totalAmount: selectedOrder.total_amount || 0,
     });
     setIsEditing(true);
+  };
+
+  const handleEditItemQty = (itemKey, delta) => {
+    setEditOrderItems((prev) => {
+      const updated = prev
+        .map((it) => {
+          if (it.key === itemKey) {
+            const newQty = Math.max(0, it.qty + delta);
+            return { ...it, qty: newQty, totalPrice: newQty * it.price };
+          }
+          return it;
+        })
+        .filter((it) => it.qty > 0);
+
+      const sub = updated.reduce((acc, it) => acc + it.qty * it.price, 0);
+      const fee = editForm.orderType === 'delivery' ? 300 : 0;
+      setEditForm((f) => ({ ...f, totalAmount: sub + fee }));
+      return updated;
+    });
+  };
+
+  const handleAddEditItem = (menuItemKey) => {
+    if (!menuItemKey) return;
+    const found = menuItems.find((m) => m.key === menuItemKey);
+    if (!found) return;
+
+    setEditOrderItems((prev) => {
+      const existing = prev.find((it) => it.key === menuItemKey);
+      let updated;
+      if (existing) {
+        updated = prev.map((it) =>
+          it.key === menuItemKey ? { ...it, qty: it.qty + 1, totalPrice: (it.qty + 1) * it.price } : it
+        );
+      } else {
+        const itemPrice = Number(stock[menuItemKey]?.price) || Number(found.price) || 600;
+        updated = [
+          ...prev,
+          {
+            key: found.key,
+            name: found.name,
+            qty: 1,
+            price: itemPrice,
+            totalPrice: itemPrice,
+          },
+        ];
+      }
+      const sub = updated.reduce((acc, it) => acc + it.qty * it.price, 0);
+      const fee = editForm.orderType === 'delivery' ? 300 : 0;
+      setEditForm((f) => ({ ...f, totalAmount: sub + fee }));
+      return updated;
+    });
+    setSelectedAddItemKey('');
   };
 
   const handleEditFormChange = (field, val) => {
@@ -687,6 +744,7 @@ export default function AdminPage() {
           deliveryLandmark: editForm.deliveryLandmark,
           paymentProofUrl: editForm.paymentProofUrl,
           totalAmount: parseFloat(editForm.totalAmount) || 0,
+          itemsBreakdown: editOrderItems,
         }),
       });
       const data = await res.json();
@@ -707,6 +765,7 @@ export default function AdminPage() {
           delivery_landmark: editForm.deliveryLandmark,
           payment_proof_url: editForm.paymentProofUrl,
           total_amount: parseFloat(editForm.totalAmount) || 0,
+          items_breakdown: editOrderItems,
         };
         setSelectedOrder(updated);
         setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? updated : o)));
@@ -745,6 +804,31 @@ export default function AdminPage() {
     const deliveryFee = createForm.orderType === 'delivery' ? 300 : 0;
     const totalAmount = subtotal + deliveryFee;
 
+    const standardKeys = ['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'];
+    const dynamicItems = {};
+    Object.entries(createFormQuantities).forEach(([k, q]) => {
+      if (!standardKeys.includes(k) && q > 0) {
+        dynamicItems[k] = q;
+      }
+    });
+
+    const itemsBreakdown = Object.entries(createFormQuantities)
+      .filter(([_, q]) => q > 0)
+      .map(([key, qty]) => {
+        const found = menuItems.find((m) => m.key === key);
+        const name = key === 'classic_bundle' ? 'Classic Bundle (pack of 4)' : key === 'premium_bundle' ? 'Premium Bundle (pack of 4)' : (found?.name || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+        const unitPrice = getItemPrice(key);
+        return {
+          key,
+          name,
+          qty,
+          unitPrice,
+          price: unitPrice,
+          totalPrice: qty * unitPrice,
+          customFlavours: key === 'classic_bundle' ? createForm.classicBundleFlavours : key === 'premium_bundle' ? createForm.premiumBundleFlavours : undefined,
+        };
+      });
+
     try {
       const payload = {
         batchName: createForm.batchName || 'Pre-Order 1',
@@ -774,6 +858,8 @@ export default function AdminPage() {
         paymentProofUrl: createForm.paymentProofUrl || 'whatsapp_verified',
         paymentStatus: createForm.paymentStatus,
         orderStatus: createForm.orderStatus,
+        itemsBreakdown,
+        dynamicItems,
       };
 
       const res = await fetch('/api/admin/orders', {
@@ -883,11 +969,36 @@ export default function AdminPage() {
     document.body.removeChild(link);
   };
 
-  // Helper: Format Cookie Detail String for Modal View with Dynamic Prices
+  // Helper: Format Cookie Detail String for Modal View with Dynamic Prices & Smart Reconciliation
   const getOrderItemsList = (o) => {
     if (!o) return [];
-    const list = [];
 
+    // 1. If the order has items_breakdown stored, parse and return it directly
+    let breakdown = o.items_breakdown;
+    if (typeof breakdown === 'string') {
+      try {
+        breakdown = JSON.parse(breakdown);
+      } catch (e) {
+        breakdown = null;
+      }
+    }
+    if (Array.isArray(breakdown) && breakdown.length > 0) {
+      return breakdown.map((item) => {
+        const qty = item.qty || 1;
+        const price = Number(item.unitPrice || item.price || 0);
+        return {
+          key: item.key,
+          name: item.name || item.key?.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+          qty,
+          price,
+          totalPrice: Number(item.totalPrice || (qty * price)),
+          customFlavours: item.customFlavours,
+        };
+      });
+    }
+
+    // 2. Otherwise build from individual columns (legacy orders)
+    const list = [];
     const getPrice = (key, defaultPrice) => {
       const stockPrice = Number(stock[key]?.price);
       if (!isNaN(stockPrice) && stockPrice > 0) return stockPrice;
@@ -921,9 +1032,9 @@ export default function AdminPage() {
       list.push({ key: 'lotus_lava', name: 'Lotus Lava', qty: o.lotus_lava_qty, price: getPrice('lotus_lava', 620) });
     }
 
-    // Dynamic menu items if stored on order
+    // Dynamic menu items if stored on order row
+    const standardKeys = ['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'];
     menuItems.forEach((m) => {
-      const standardKeys = ['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'];
       if (!standardKeys.includes(m.key) && o[`${m.key}_qty`] > 0) {
         list.push({
           key: m.key,
@@ -940,6 +1051,76 @@ export default function AdminPage() {
     if (o.premium_bundle_qty > 0) {
       list.push({ key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', qty: o.premium_bundle_qty, price: getPrice('premium_bundle', 2400), customFlavours: o.premium_bundle_flavours });
     }
+
+    // 3. Discrepancy reconciliation for legacy orders where dynamic items weren't saved in columns:
+    const recordedTotal = Math.round(Number(o.total_amount) || 0);
+    const isDelivery = o.order_type === 'delivery';
+    const deliveryFee = isDelivery ? 300 : 0;
+    const expectedSubtotal = Math.max(0, recordedTotal - deliveryFee);
+    const currentSubtotal = list.reduce((acc, it) => acc + it.qty * it.price, 0);
+    let diff = expectedSubtotal - currentSubtotal;
+
+    if (diff > 0) {
+      const nonStandardItems = menuItems.filter((m) => !standardKeys.includes(m.key));
+
+      // Exact price match (e.g. Crumble Pot @ 3,500)
+      const exactMatch = nonStandardItems.find((m) => Number(m.price) === diff);
+      if (exactMatch) {
+        list.push({
+          key: exactMatch.key,
+          name: exactMatch.name,
+          qty: 1,
+          price: Number(exactMatch.price),
+          totalPrice: Number(exactMatch.price),
+        });
+        diff = 0;
+      } else {
+        // Multi-quantity of single dynamic item match
+        const multiMatch = nonStandardItems.find((m) => Number(m.price) > 0 && diff % Number(m.price) === 0);
+        if (multiMatch) {
+          const qty = Math.floor(diff / Number(multiMatch.price));
+          list.push({
+            key: multiMatch.key,
+            name: multiMatch.name,
+            qty,
+            price: Number(multiMatch.price),
+            totalPrice: qty * Number(multiMatch.price),
+          });
+          diff = 0;
+        } else {
+          // Greedy combination matching
+          const sortedDynamic = [...nonStandardItems]
+            .filter((m) => Number(m.price) > 0)
+            .sort((a, b) => Number(b.price) - Number(a.price));
+
+          for (const dynItem of sortedDynamic) {
+            const p = Number(dynItem.price);
+            if (diff >= p) {
+              const qty = Math.floor(diff / p);
+              list.push({
+                key: dynItem.key,
+                name: dynItem.name,
+                qty,
+                price: p,
+                totalPrice: qty * p,
+              });
+              diff -= qty * p;
+            }
+          }
+
+          if (diff > 0) {
+            list.push({
+              key: 'custom_item',
+              name: 'Additional Menu / Custom Item',
+              qty: 1,
+              price: diff,
+              totalPrice: diff,
+            });
+          }
+        }
+      }
+    }
+
     return list;
   };
 
@@ -2149,8 +2330,130 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {/* Column 2: Edit Payment proof */}
+                  {/* Column 2: Edit Items & Payment proof */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    <div className={styles.infoSection}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <h4 style={{ margin: 0 }}>🍪 Edit Items & Breakdown</h4>
+                        <span style={{ fontSize: '0.75rem', color: '#c8a27a' }}>
+                          {editOrderItems.reduce((acc, it) => acc + it.qty, 0)} item(s)
+                        </span>
+                      </div>
+
+                      {/* Current items in order */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px', maxHeight: '180px', overflowY: 'auto' }}>
+                        {editOrderItems.length === 0 ? (
+                          <p style={{ fontSize: '0.8rem', color: '#8d6e63', fontStyle: 'italic', margin: 0 }}>
+                            No items in order. Select an item below to add.
+                          </p>
+                        ) : (
+                          editOrderItems.map((item) => (
+                            <div
+                              key={item.key}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                background: 'rgba(255,255,255,0.03)',
+                                padding: '8px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(200,162,122,0.15)',
+                              }}
+                            >
+                              <div style={{ flex: 1, marginRight: '10px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff' }}>{item.name}</div>
+                                <div style={{ fontSize: '0.75rem', color: '#c8a27a' }}>
+                                  PKR {item.price.toLocaleString()} each
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditItemQty(item.key, -1)}
+                                  style={{
+                                    width: '24px',
+                                    height: '24px',
+                                    background: 'rgba(255,255,255,0.1)',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: '#fff',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  -
+                                </button>
+                                <span style={{ fontWeight: 700, fontSize: '0.85rem', minWidth: '18px', textAlign: 'center' }}>
+                                  {item.qty}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditItemQty(item.key, 1)}
+                                  style={{
+                                    width: '24px',
+                                    height: '24px',
+                                    background: 'rgba(226, 174, 70, 0.25)',
+                                    border: '1px solid rgba(226, 174, 70, 0.4)',
+                                    borderRadius: '4px',
+                                    color: '#f5cf73',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  +
+                                </button>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f5cf73', minWidth: '65px', textAlign: 'right' }}>
+                                  PKR {(item.qty * item.price).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Add Menu Item Dropdown */}
+                      <div style={{ borderTop: '1px dashed rgba(200,162,122,0.2)', paddingTop: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#c8a27a', marginBottom: '4px' }}>
+                          Add / Include Another Item (e.g. Crumble Pot):
+                        </label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <select
+                            value={selectedAddItemKey}
+                            onChange={(e) => setSelectedAddItemKey(e.target.value)}
+                            className={styles.stockInput}
+                            style={{ flex: 1, height: '34px', background: '#130c08', color: '#fff', fontSize: '0.8rem' }}
+                          >
+                            <option value="">-- Choose Item from Menu --</option>
+                            {menuItems.map((m) => (
+                              <option key={m.key} value={m.key}>
+                                {m.name} (PKR {Number(m.price || 0).toLocaleString()})
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={!selectedAddItemKey}
+                            onClick={() => handleAddEditItem(selectedAddItemKey)}
+                            style={{
+                              background: selectedAddItemKey ? 'rgba(129, 199, 132, 0.2)' : 'rgba(255,255,255,0.05)',
+                              border: selectedAddItemKey ? '1px solid #81c784' : '1px solid rgba(255,255,255,0.1)',
+                              color: selectedAddItemKey ? '#81c784' : '#666',
+                              padding: '0 12px',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              cursor: selectedAddItemKey ? 'pointer' : 'not-allowed',
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className={styles.infoSection}>
                       <h4 style={{ margin: '0 0 10px 0' }}>📸 Edit Payment Proof Screenshot</h4>
                       <div style={{ marginBottom: '15px' }}>

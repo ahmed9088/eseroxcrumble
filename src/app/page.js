@@ -1755,15 +1755,56 @@ export default function PreorderPage() {
                           const isRejected = ord.payment_status === 'rejected';
 
                           const orderItems = [];
-                          if (ord.classic_chocolate_chip_qty > 0) orderItems.push(`Classic Chocolate Chip × ${ord.classic_chocolate_chip_qty}`);
-                          if (ord.double_chocolate_qty > 0) orderItems.push(`Double Chocolate × ${ord.double_chocolate_qty}`);
-                          if (ord.chocolate_chip_walnut_qty > 0) orderItems.push(`Chocolate Chip Walnut × ${ord.chocolate_chip_walnut_qty}`);
-                          if (ord.cookies_cream_qty > 0) orderItems.push(`Cookies & Cream × ${ord.cookies_cream_qty}`);
-                          if (ord.kunafa_chocolate_qty > 0) orderItems.push(`Kunafa Chocolate × ${ord.kunafa_chocolate_qty}`);
-                          if (ord.hazelnut_filled_qty > 0) orderItems.push(`Hazelnut Filled × ${ord.hazelnut_filled_qty}`);
-                          if (ord.lotus_lava_qty > 0) orderItems.push(`Lotus Lava × ${ord.lotus_lava_qty}`);
-                          if (ord.classic_bundle_qty > 0) orderItems.push(`Classic Bundle × ${ord.classic_bundle_qty}`);
-                          if (ord.premium_bundle_qty > 0) orderItems.push(`Premium Bundle × ${ord.premium_bundle_qty}`);
+                          let breakdown = ord.items_breakdown;
+                          if (typeof breakdown === 'string') {
+                            try {
+                              breakdown = JSON.parse(breakdown);
+                            } catch (e) {
+                              breakdown = null;
+                            }
+                          }
+
+                          if (Array.isArray(breakdown) && breakdown.length > 0) {
+                            breakdown.forEach((it) => {
+                              const p = Number(it.unitPrice || it.price || 0);
+                              orderItems.push(`${it.name || it.key} × ${it.qty || 1}${p > 0 ? ` (@ PKR ${p.toLocaleString()})` : ''}`);
+                            });
+                          } else {
+                            if (ord.classic_chocolate_chip_qty > 0) orderItems.push(`Classic Chocolate Chip × ${ord.classic_chocolate_chip_qty}`);
+                            if (ord.double_chocolate_qty > 0) orderItems.push(`Double Chocolate × ${ord.double_chocolate_qty}`);
+                            if (ord.chocolate_chip_walnut_qty > 0) orderItems.push(`Chocolate Chip Walnut × ${ord.chocolate_chip_walnut_qty}`);
+                            if (ord.cookies_cream_qty > 0) orderItems.push(`Cookies & Cream × ${ord.cookies_cream_qty}`);
+                            if (ord.kunafa_chocolate_qty > 0) orderItems.push(`Kunafa Chocolate × ${ord.kunafa_chocolate_qty}`);
+                            if (ord.hazelnut_filled_qty > 0) orderItems.push(`Hazelnut Filled × ${ord.hazelnut_filled_qty}`);
+                            if (ord.lotus_lava_qty > 0) orderItems.push(`Lotus Lava × ${ord.lotus_lava_qty}`);
+                            if (ord.classic_bundle_qty > 0) orderItems.push(`Classic Bundle × ${ord.classic_bundle_qty}`);
+                            if (ord.premium_bundle_qty > 0) orderItems.push(`Premium Bundle × ${ord.premium_bundle_qty}`);
+
+                            // Reconcile dynamic items for legacy orders if total exceeds standard items sum
+                            const standardSum =
+                              (ord.classic_chocolate_chip_qty || 0) * 580 +
+                              (ord.double_chocolate_qty || 0) * 580 +
+                              (ord.chocolate_chip_walnut_qty || 0) * 580 +
+                              (ord.cookies_cream_qty || 0) * 620 +
+                              (ord.kunafa_chocolate_qty || 0) * 620 +
+                              (ord.hazelnut_filled_qty || 0) * 620 +
+                              (ord.lotus_lava_qty || 0) * 620 +
+                              (ord.classic_bundle_qty || 0) * 2200 +
+                              (ord.premium_bundle_qty || 0) * 2400;
+                            const isDel = ord.order_type === 'delivery';
+                            const fee = isDel ? 300 : 0;
+                            const expSub = Math.max(0, (parseFloat(ord.total_amount) || 0) - fee);
+                            const diff = expSub - standardSum;
+                            if (diff > 0) {
+                              const nonStd = menuItems.filter((m) => !['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(m.key));
+                              const match = nonStd.find((m) => Number(m.price) === diff);
+                              if (match) {
+                                orderItems.push(`${match.name} × 1 (@ PKR ${Number(match.price).toLocaleString()})`);
+                              } else {
+                                orderItems.push(`Custom / Added Item × 1 (@ PKR ${diff.toLocaleString()})`);
+                              }
+                            }
+                          }
 
                           return (
                             <div key={ord.id} className={styles.orderCard}>
