@@ -1,5 +1,7 @@
+import { cookies } from 'next/headers';
 import { sendEmail } from '../../../../lib/emailService';
 import { supabaseAdmin } from '../../../../lib/supabase';
+import { getCustomerSession, setCustomerSessionCookie } from '../../../../lib/session';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -42,6 +44,17 @@ export async function POST(request) {
         dynamicItems = JSON.parse(itemsJsonRaw);
       } catch (e) {
         console.warn('Failed to parse itemsJson:', e);
+      }
+    }
+
+    // Extract item breakdown if provided
+    let itemsBreakdown = [];
+    const itemsBreakdownRaw = formData.get('itemsBreakdown');
+    if (itemsBreakdownRaw) {
+      try {
+        itemsBreakdown = JSON.parse(itemsBreakdownRaw);
+      } catch (e) {
+        console.warn('Failed to parse itemsBreakdown:', e);
       }
     }
 
@@ -88,28 +101,27 @@ export async function POST(request) {
       );
     }
 
-    // 2. Email verification check
+    // 2. Customer Session Verification check
     const cleanEmail = email.trim().toLowerCase();
+    const cookieStore = await cookies();
+    const session = await getCustomerSession(cookieStore);
 
-    const { data: existingOrders } = await supabaseAdmin
-      .from('orders')
-      .select('id')
-      .ilike('email', cleanEmail)
-      .limit(1);
+    let isAuthorized = false;
+    if (session && session.email === cleanEmail) {
+      isAuthorized = true;
+    } else {
+      // Fallback: check in-memory store if verified within active window
+      const memEntry = global.__otpMemoryStore?.get(cleanEmail);
+      if (memEntry && memEntry.verified) {
+        isAuthorized = true;
+        await setCustomerSessionCookie(cookieStore, cleanEmail);
+      }
+    }
 
-    const { data: verification } = await supabaseAdmin
-      .from('email_verifications')
-      .select('id')
-      .ilike('email', cleanEmail)
-      .eq('verified', true)
-      .limit(1);
-
-    const isVerifiedCustomer = (existingOrders && existingOrders.length > 0) || (verification && verification.length > 0);
-
-    if (!isVerifiedCustomer) {
+    if (!isAuthorized) {
       return NextResponse.json(
-        { error: 'Email verification is required. Please verify your email first.' },
-        { status: 400 }
+        { error: 'Email verification required. Please verify your email with the 6-digit code first.' },
+        { status: 401 }
       );
     }
 
@@ -154,17 +166,37 @@ export async function POST(request) {
     };
 
     if (classicBundleQty > 0 && classicBundleFlavours) {
-      classicBundleFlavours.split(',').forEach((flv) => {
-        const key = mapFriendlyToKey(flv);
-        if (key) deductions[key] = (deductions[key] || 0) + classicBundleQty;
-      });
+      if (classicBundleFlavours.includes('|')) {
+        classicBundleFlavours.split('|').forEach((pack) => {
+          const flvs = pack.replace(/Pack\s*#\d+:\s*\[?/, '').replace(/\]?$/, '').split(',');
+          flvs.forEach((flv) => {
+            const key = mapFriendlyToKey(flv);
+            if (key) deductions[key] = (deductions[key] || 0) + 1;
+          });
+        });
+      } else {
+        classicBundleFlavours.split(',').forEach((flv) => {
+          const key = mapFriendlyToKey(flv);
+          if (key) deductions[key] = (deductions[key] || 0) + 1;
+        });
+      }
     }
 
     if (premiumBundleQty > 0 && premiumBundleFlavours) {
-      premiumBundleFlavours.split(',').forEach((flv) => {
-        const key = mapFriendlyToKey(flv);
-        if (key) deductions[key] = (deductions[key] || 0) + premiumBundleQty;
-      });
+      if (premiumBundleFlavours.includes('|')) {
+        premiumBundleFlavours.split('|').forEach((pack) => {
+          const flvs = pack.replace(/Pack\s*#\d+:\s*\[?/, '').replace(/\]?$/, '').split(',');
+          flvs.forEach((flv) => {
+            const key = mapFriendlyToKey(flv);
+            if (key) deductions[key] = (deductions[key] || 0) + 1;
+          });
+        });
+      } else {
+        premiumBundleFlavours.split(',').forEach((flv) => {
+          const key = mapFriendlyToKey(flv);
+          if (key) deductions[key] = (deductions[key] || 0) + 1;
+        });
+      }
     }
 
     // 4. Upload payment proof to Supabase Storage
@@ -327,25 +359,62 @@ export async function POST(request) {
       .update({ verified: true })
       .ilike('email', email);
 
-    // 7. Send "Order Received" confirmation email to user
-    const itemsList = [];
-    if (classicChocolateChipQty > 0) itemsList.push(`<li>Classic Chocolate Chip x ${classicChocolateChipQty} (${classicChocolateChipQty * 580} PKR)</li>`);
-    if (doubleChocolateQty > 0) itemsList.push(`<li>Double Chocolate x ${doubleChocolateQty} (${doubleChocolateQty * 580} PKR)</li>`);
-    if (chocolateChipWalnutQty > 0) itemsList.push(`<li>Chocolate Chip Walnut x ${chocolateChipWalnutQty} (${chocolateChipWalnutQty * 580} PKR)</li>`);
-    if (cookiesCreamQty > 0) itemsList.push(`<li>Cookies & Cream x ${cookiesCreamQty} (${cookiesCreamQty * 620} PKR)</li>`);
-    if (kunafaChocolateQty > 0) itemsList.push(`<li>Kunafa Chocolate x ${kunafaChocolateQty} (${kunafaChocolateQty * 620} PKR)</li>`);
-    if (hazelnutFilledQty > 0) itemsList.push(`<li>Hazelnut Filled x ${hazelnutFilledQty} (${hazelnutFilledQty * 620} PKR)</li>`);
-    if (lotusLavaQty > 0) itemsList.push(`<li>Lotus Lava x ${lotusLavaQty} (${lotusLavaQty * 620} PKR)</li>`);
+    // 7. Send "Order Received" confirmation email to user with dynamic prices and clear breakdown
+    const priceMap = {
+      classic_chocolate_chip: 580,
+      double_chocolate: 580,
+      chocolate_chip_walnut: 580,
+      cookies_cream: 620,
+      kunafa_chocolate: 620,
+      hazelnut_filled: 620,
+      lotus_lava: 620,
+      classic_bundle: 2200,
+      premium_bundle: 2400,
+    };
 
-    // Add any dynamic items
-    for (const [dKey, dQty] of Object.entries(dynamicItems)) {
-      if (dQty > 0 && !['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(dKey)) {
-        itemsList.push(`<li>${dKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} x ${dQty}</li>`);
+    try {
+      const { data: stockRows } = await supabaseAdmin.from('cookie_stock').select('flavor_key, price');
+      if (stockRows && stockRows.length > 0) {
+        stockRows.forEach((r) => {
+          if (r.price) priceMap[r.flavor_key] = r.price;
+        });
       }
+      const { data: bData } = await supabaseAdmin.from('settings').select('value').eq('key', 'bundle_settings').single();
+      if (bData?.value?.classic_bundle?.price) priceMap.classic_bundle = bData.value.classic_bundle.price;
+      if (bData?.value?.premium_bundle?.price) priceMap.premium_bundle = bData.value.premium_bundle.price;
+    } catch (e) {
+      // fallback to defaults
     }
 
-    if (classicBundleQty > 0) itemsList.push(`<li>Classic Bundle (pack of 4) x ${classicBundleQty} (${classicBundleQty * 2200} PKR)<br/><small style="color: #666;">Flavours: ${classicBundleFlavours}</small></li>`);
-    if (premiumBundleQty > 0) itemsList.push(`<li>Premium Bundle (pack of 4) x ${premiumBundleQty} (${premiumBundleQty * 2400} PKR)<br/><small style="color: #666;">Flavours: ${premiumBundleFlavours}</small></li>`);
+    const itemsList = [];
+    if (itemsBreakdown && itemsBreakdown.length > 0) {
+      itemsBreakdown.forEach((item) => {
+        itemsList.push(
+          `<li style="margin-bottom: 6px;"><strong>${item.name}</strong> × ${item.qty} (@ PKR ${item.unitPrice.toLocaleString()}) &mdash; <strong>PKR ${item.totalPrice.toLocaleString()}</strong></li>`
+        );
+      });
+    } else {
+      if (classicChocolateChipQty > 0) itemsList.push(`<li>Classic Chocolate Chip × ${classicChocolateChipQty} (@ PKR ${priceMap.classic_chocolate_chip}) &mdash; <strong>PKR ${classicChocolateChipQty * priceMap.classic_chocolate_chip}</strong></li>`);
+      if (doubleChocolateQty > 0) itemsList.push(`<li>Double Chocolate × ${doubleChocolateQty} (@ PKR ${priceMap.double_chocolate}) &mdash; <strong>PKR ${doubleChocolateQty * priceMap.double_chocolate}</strong></li>`);
+      if (chocolateChipWalnutQty > 0) itemsList.push(`<li>Chocolate Chip Walnut × ${chocolateChipWalnutQty} (@ PKR ${priceMap.chocolate_chip_walnut}) &mdash; <strong>PKR ${chocolateChipWalnutQty * priceMap.chocolate_chip_walnut}</strong></li>`);
+      if (cookiesCreamQty > 0) itemsList.push(`<li>Cookies & Cream × ${cookiesCreamQty} (@ PKR ${priceMap.cookies_cream}) &mdash; <strong>PKR ${cookiesCreamQty * priceMap.cookies_cream}</strong></li>`);
+      if (kunafaChocolateQty > 0) itemsList.push(`<li>Kunafa Chocolate × ${kunafaChocolateQty} (@ PKR ${priceMap.kunafa_chocolate}) &mdash; <strong>PKR ${kunafaChocolateQty * priceMap.kunafa_chocolate}</strong></li>`);
+      if (hazelnutFilledQty > 0) itemsList.push(`<li>Hazelnut Filled × ${hazelnutFilledQty} (@ PKR ${priceMap.hazelnut_filled}) &mdash; <strong>PKR ${hazelnutFilledQty * priceMap.hazelnut_filled}</strong></li>`);
+      if (lotusLavaQty > 0) itemsList.push(`<li>Lotus Lava × ${lotusLavaQty} (@ PKR ${priceMap.lotus_lava}) &mdash; <strong>PKR ${lotusLavaQty * priceMap.lotus_lava}</strong></li>`);
+
+      for (const [dKey, dQty] of Object.entries(dynamicItems)) {
+        if (dQty > 0 && !['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(dKey)) {
+          const itemPrice = priceMap[dKey] || 600;
+          itemsList.push(`<li>${dKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} × ${dQty} (@ PKR ${itemPrice}) &mdash; <strong>PKR ${dQty * itemPrice}</strong></li>`);
+        }
+      }
+
+      if (classicBundleQty > 0) itemsList.push(`<li>Classic Bundle (pack of 4) × ${classicBundleQty} (@ PKR ${priceMap.classic_bundle}) &mdash; <strong>PKR ${classicBundleQty * priceMap.classic_bundle}</strong><br/><small style="color: #666;">Flavours: ${classicBundleFlavours}</small></li>`);
+      if (premiumBundleQty > 0) itemsList.push(`<li>Premium Bundle (pack of 4) × ${premiumBundleQty} (@ PKR ${priceMap.premium_bundle}) &mdash; <strong>PKR ${premiumBundleQty * priceMap.premium_bundle}</strong><br/><small style="color: #666;">Flavours: ${premiumBundleFlavours}</small></li>`);
+    }
+
+    const deliveryFee = orderType === 'delivery' ? 300 : 0;
+    const subtotal = Math.max(0, totalAmount - deliveryFee);
 
     try {
       await sendEmail({
@@ -369,12 +438,21 @@ export async function POST(request) {
               ${orderType === 'delivery' ? `<p style="font-size: 14px; margin: 5px 0;"><strong>Address:</strong> ${deliveryStreet}, ${deliveryCity}</p>` : ''}
               
               <h4 style="color: #5d4037; border-bottom: 1px dashed #e6d3c0; padding-bottom: 5px; margin-bottom: 10px;">Items Ordered</h4>
-              <ul style="padding-left: 20px; font-size: 14px; line-height: 1.6; margin: 0;">
+              <ul style="padding-left: 20px; font-size: 14px; line-height: 1.6; margin: 0 0 15px 0;">
                 ${itemsList.join('')}
               </ul>
-              <p style="font-size: 16px; font-weight: bold; margin-top: 15px; margin-bottom: 0; text-align: right; color: #3e2723;">
-                Total Paid: ${totalAmount.toLocaleString()} PKR
-              </p>
+              
+              <div style="border-top: 1px solid #e6d3c0; padding-top: 10px; font-size: 14px;">
+                <div style="margin-bottom: 5px; color: #5d4037;">
+                  <strong>Items Subtotal:</strong> PKR ${subtotal.toLocaleString()}
+                </div>
+                <div style="margin-bottom: 8px; color: #5d4037;">
+                  <strong>Delivery Fee (${orderType === 'delivery' ? 'Standard Delivery' : 'Takeaway - Free'}):</strong> ${deliveryFee > 0 ? `PKR ${deliveryFee.toLocaleString()}` : 'FREE (PKR 0)'}
+                </div>
+                <div style="font-size: 16px; font-weight: bold; border-top: 2px solid #8d6e63; padding-top: 8px; color: #3e2723;">
+                  Total Paid: PKR ${totalAmount.toLocaleString()}
+                </div>
+              </div>
             </div>
 
             <div style="background-color: #efebe9; border-radius: 8px; padding: 15px; border-left: 4px solid #8d6e63; font-size: 14px;">

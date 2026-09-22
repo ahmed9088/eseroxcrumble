@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import styles from './page.module.css';
 
-// Cookie Prices
+// Cookie Prices Fallback
 const COOKIE_PRICES = {
   classic_chocolate_chip: 580,
   double_chocolate: 580,
@@ -14,6 +14,18 @@ const COOKIE_PRICES = {
   lotus_lava: 620,
   classic_bundle: 2200,
   premium_bundle: 2400,
+};
+
+const DEFAULT_STOCK_STATUS = {
+  classic_chocolate_chip: { price: 580, available: 200, is_active: true, name: 'Classic Chocolate Chip', category: 'classic' },
+  double_chocolate: { price: 580, available: 200, is_active: true, name: 'Double Chocolate', category: 'classic' },
+  chocolate_chip_walnut: { price: 580, available: 100, is_active: true, name: 'Chocolate Chip Walnut', category: 'classic' },
+  cookies_cream: { price: 620, available: 150, is_active: true, name: 'Cookies & Cream', category: 'premium' },
+  kunafa_chocolate: { price: 620, available: 100, is_active: true, name: 'Kunafa Chocolate', category: 'premium' },
+  hazelnut_filled: { price: 620, available: 150, is_active: true, name: 'Hazelnut Filled', category: 'premium' },
+  lotus_lava: { price: 620, available: 100, is_active: true, name: 'Lotus Lava', category: 'premium' },
+  classic_bundle: { price: 2200, is_active: true, name: 'Classic Bundle (pack of 4)', isBundle: true, category: 'bundle' },
+  premium_bundle: { price: 2400, is_active: true, name: 'Premium Bundle (pack of 4)', isBundle: true, category: 'bundle' },
 };
 
 const CLASSIC_FLAVORS = [
@@ -63,18 +75,8 @@ export default function PreorderPage() {
   const [classicBundleChoices, setClassicBundleChoices] = useState({});
   const [premiumBundleChoices, setPremiumBundleChoices] = useState({});
 
-  // Cookie Stock status (fetched from API)
-  const [stockStatus, setStockStatus] = useState({
-    classic_chocolate_chip: true,
-    double_chocolate: true,
-    chocolate_chip_walnut: true,
-    cookies_cream: true,
-    kunafa_chocolate: true,
-    hazelnut_filled: true,
-    lotus_lava: true,
-    classic_bundle: true,
-    premium_bundle: true,
-  });
+  // Cookie Stock status (fetched from API, initialized with complete default values)
+  const [stockStatus, setStockStatus] = useState(DEFAULT_STOCK_STATUS);
 
   // File Upload State
   const [paymentProof, setPaymentProof] = useState(null);
@@ -89,6 +91,13 @@ export default function PreorderPage() {
   const [otpError, setOtpError] = useState('');
   const [otpSuccess, setOtpSuccess] = useState('');
 
+  // Customer Session & Tracking States
+  const [customerSessionEmail, setCustomerSessionEmail] = useState('');
+  const [showOrdersModal, setShowOrdersModal] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState('');
+
   // General States
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -102,6 +111,22 @@ export default function PreorderPage() {
   // Fetch Stock Status, Menu Items, Batches, and Announcement on Mount
   useEffect(() => {
     async function loadData() {
+      // Check customer session first
+      try {
+        const sRes = await fetch('/api/customer/session');
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (sData.authenticated && sData.email) {
+            setCustomerSessionEmail(sData.email);
+            setEmail(sData.email);
+            setEmailVerified(true);
+            setOtpSuccess(`✓ Verified Session: ${sData.email}`);
+          }
+        }
+      } catch (sErr) {
+        console.warn('Failed to check customer session', sErr);
+      }
+
       try {
         const res = await fetch('/api/admin/stock');
         const data = await res.json();
@@ -264,18 +289,22 @@ export default function PreorderPage() {
   // Helper to check if a flavor is sold out (from db status)
   const isSoldOut = (key) => {
     const item = stockStatus[key];
-    if (key === 'classic_bundle') {
-      return !item || !item.is_active;
+    if (!item) return false;
+    if (key === 'classic_bundle' || key === 'premium_bundle') {
+      return item.is_active === false;
     }
-    if (key === 'premium_bundle') {
-      return !item || !item.is_active;
-    }
-    return !item || !item.is_active || item.available <= 0;
+    return item.is_active === false || (typeof item.available === 'number' && item.available <= 0);
   };
 
   // Dynamic Item Price helper
   const getItemPrice = (key) => {
-    return stockStatus[key]?.price ?? COOKIE_PRICES[key] ?? 580;
+    const sPrice = Number(stockStatus[key]?.price);
+    if (!isNaN(sPrice) && sPrice > 0) return sPrice;
+    const mItem = menuItems.find((m) => m.key === key);
+    const mPrice = Number(mItem?.price);
+    if (!isNaN(mPrice) && mPrice > 0) return mPrice;
+    if (COOKIE_PRICES[key]) return COOKIE_PRICES[key];
+    return 580;
   };
 
   // Quantity Change Handlers
@@ -363,7 +392,14 @@ export default function PreorderPage() {
     return getSubtotal() + getDeliveryFee();
   };
 
-  const totalItems = Object.values(quantities).reduce((a, b) => a + b, 0);
+  const totalItemCount = Object.values(quantities).reduce((a, b) => a + b, 0);
+  const totalCookieCount = Object.entries(quantities).reduce((acc, [key, qty]) => {
+    if (key === 'classic_bundle' || key === 'premium_bundle') {
+      return acc + qty * 4;
+    }
+    return acc + qty;
+  }, 0);
+  const totalItems = totalItemCount;
 
   // Auto-check returning customer email verification status
   const checkEmailVerificationStatus = async (emailToTest) => {
@@ -375,11 +411,10 @@ export default function PreorderPage() {
       const data = await res.json();
       if (res.ok && data.isVerified) {
         setEmailVerified(true);
+        setCustomerSessionEmail(data.email || emailToTest.trim().toLowerCase());
         setOtpSent(false);
         setOtpError('');
-        setOtpSuccess(data.isExistingCustomer 
-          ? '✓ You are a verified returning customer! Form unlocked.' 
-          : '✓ Your email is verified! Form unlocked.');
+        setOtpSuccess(data.message || '✓ Verified active session! Form unlocked.');
       } else {
         setEmailVerified(false);
         setOtpSuccess('');
@@ -392,11 +427,16 @@ export default function PreorderPage() {
   const handleEmailChange = (e) => {
     const val = e.target.value;
     setEmail(val);
-    if (val.includes('@') && val.includes('.')) {
-      checkEmailVerificationStatus(val);
+    if (customerSessionEmail && val.trim().toLowerCase() === customerSessionEmail.trim().toLowerCase()) {
+      setEmailVerified(true);
+      setOtpSuccess(`✓ Verified Session: ${customerSessionEmail}`);
+      setOtpError('');
     } else {
       setEmailVerified(false);
       setOtpSuccess('');
+      if (val.includes('@') && val.includes('.')) {
+        checkEmailVerificationStatus(val);
+      }
     }
   };
 
@@ -413,13 +453,14 @@ export default function PreorderPage() {
       const res = await fetch('/api/otp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
       const data = await res.json();
       if (res.ok) {
         if (data.isVerified) {
           setEmailVerified(true);
-          setOtpSuccess('✓ You are a verified returning customer! Form unlocked.');
+          setCustomerSessionEmail(email.trim().toLowerCase());
+          setOtpSuccess('✓ Active verified session! Form unlocked.');
         } else {
           setOtpSent(true);
           const successMsg = data.devHint 
@@ -450,12 +491,15 @@ export default function PreorderPage() {
       const res = await fetch('/api/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: otpCode }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: otpCode }),
       });
       const data = await res.json();
       if (res.ok) {
         setEmailVerified(true);
-        setOtpSuccess('Email verified successfully! Form unlocked.');
+        setCustomerSessionEmail(email.trim().toLowerCase());
+        setOtpSent(false);
+        setOtpCode('');
+        setOtpSuccess('✓ Email verified & session established! Form unlocked.');
       } else {
         setOtpError(data.error || 'Invalid verification code.');
       }
@@ -464,6 +508,78 @@ export default function PreorderPage() {
     } finally {
       setOtpLoading(false);
     }
+  };
+
+  // Customer Session Logout / Switch Account
+  const handleLogoutCustomer = async () => {
+    try {
+      await fetch('/api/customer/session', { method: 'DELETE' });
+    } catch (e) {
+      // Ignore
+    }
+    setCustomerSessionEmail('');
+    setEmail('');
+    setEmailVerified(false);
+    setOtpSent(false);
+    setOtpCode('');
+    setOtpSuccess('');
+    setOtpError('');
+    // Clean cart reset to isolate session data
+    setQuantities({
+      classic_chocolate_chip: 0,
+      double_chocolate: 0,
+      chocolate_chip_walnut: 0,
+      cookies_cream: 0,
+      kunafa_chocolate: 0,
+      hazelnut_filled: 0,
+      lotus_lava: 0,
+      classic_bundle: 0,
+      premium_bundle: 0,
+    });
+    setClassicBundleChoices({});
+    setPremiumBundleChoices({});
+    setPaymentProof(null);
+  };
+
+  // Load customer orders strictly for the verified customer session
+  const loadCustomerOrders = async () => {
+    setLoadingOrders(true);
+    setOrdersError('');
+    try {
+      const res = await fetch('/api/customer/orders');
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerOrders(data.orders || []);
+      } else if (res.status === 401) {
+        setOrdersError('Please verify your email address to view your personal orders.');
+      } else {
+        setOrdersError('Failed to load your orders.');
+      }
+    } catch (err) {
+      setOrdersError('Network error while loading your orders.');
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  // Place another preorder with a clean cart reset
+  const handlePlaceAnother = () => {
+    setSuccessOrderId('');
+    setQuantities({
+      classic_chocolate_chip: 0,
+      double_chocolate: 0,
+      chocolate_chip_walnut: 0,
+      cookies_cream: 0,
+      kunafa_chocolate: 0,
+      hazelnut_filled: 0,
+      lotus_lava: 0,
+      classic_bundle: 0,
+      premium_bundle: 0,
+    });
+    setClassicBundleChoices({});
+    setPremiumBundleChoices({});
+    setPaymentProof(null);
+    setErrorMsg('');
   };
 
   // Drag & Drop File Handlers
@@ -620,11 +736,29 @@ export default function PreorderPage() {
         formData.append('deliveryLandmark', deliveryLandmark);
       }
 
-      // Add quantities
+      // Add quantities and item breakdowns
       Object.entries(quantities).forEach(([item, qty]) => {
         formData.append(`${item.replace(/_([a-z])/g, (g) => g[1].toUpperCase())}Qty`, qty);
       });
       formData.append('itemsJson', JSON.stringify(quantities));
+
+      const itemsBreakdown = Object.entries(quantities)
+        .filter(([_, q]) => q > 0)
+        .map(([key, qty]) => {
+          const itemObj = stockStatus[key] || menuItems.find((m) => m.key === key);
+          const name = itemObj?.flavor_name || itemObj?.name || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+          const unitPrice = getItemPrice(key);
+          return {
+            key,
+            name,
+            qty,
+            unitPrice,
+            totalPrice: qty * unitPrice,
+          };
+        });
+      formData.append('itemsBreakdown', JSON.stringify(itemsBreakdown));
+      formData.append('subtotal', getSubtotal().toString());
+      formData.append('deliveryFee', getDeliveryFee().toString());
 
       // Parse and attach bundle flavors string
       if (quantities.classic_bundle > 0) {
@@ -730,12 +864,28 @@ export default function PreorderPage() {
             <p style={{ fontSize: '0.9rem', color: '#8d6e63', marginBottom: '30px' }}>
               We will verify your bank transfer screenshot and email you a status update within a few hours.
             </p>
-            <div className={styles.successActions}>
+            <div className={styles.successActions} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <button
+                type="button"
                 className={styles.successBtn}
-                onClick={() => window.location.reload()}
+                onClick={handlePlaceAnother}
               >
                 Place Another Preorder
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOrdersModal(true);
+                  loadCustomerOrders();
+                }}
+                className={styles.successBtn}
+                style={{
+                  background: 'rgba(226, 174, 70, 0.15)',
+                  border: '1px solid rgba(226, 174, 70, 0.4)',
+                  color: '#f5cf73',
+                }}
+              >
+                📦 Track / View My Preorders
               </button>
             </div>
           </div>
@@ -779,6 +929,55 @@ export default function PreorderPage() {
               Now Booking: <strong style={{ color: '#ffffff' }}>{activeBatchName}</strong>
             </div>
           )}
+
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowOrdersModal(true);
+                loadCustomerOrders();
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 18px',
+                background: 'rgba(226, 174, 70, 0.12)',
+                border: '1px solid rgba(226, 174, 70, 0.35)',
+                borderRadius: '24px',
+                fontSize: '0.85rem',
+                color: '#f5cf73',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              id="track-my-preorders-btn"
+            >
+              <span>📦</span> Track My Preorders
+            </button>
+            {customerSessionEmail && (
+              <button
+                type="button"
+                onClick={handleLogoutCustomer}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '24px',
+                  fontSize: '0.8rem',
+                  color: '#d1ddf7',
+                  cursor: 'pointer',
+                }}
+                title="Log out from this email session"
+                id="switch-account-btn"
+              >
+                <span>🚪</span> Switch Account
+              </button>
+            )}
+          </div>
         </header>
 
         {announcement && announcement.isActive && announcement.text && (
@@ -926,10 +1125,11 @@ export default function PreorderPage() {
                   <span>✓ {otpSuccess || 'Email verified. Form unlocked.'}</span>
                   <button
                     type="button"
-                    onClick={() => { setEmailVerified(false); setOtpSuccess(''); setOtpSent(false); }}
+                    onClick={handleLogoutCustomer}
                     style={{ background: 'none', border: 'none', color: '#ff8a80', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline', fontWeight: 'bold' }}
+                    title="Clear session and change email"
                   >
-                    Change Email
+                    Switch / Change Email
                   </button>
                 </div>
               )}
@@ -1350,6 +1550,14 @@ export default function PreorderPage() {
                   </button>
                 </span>
               </div>
+              {getTotal() > 0 && (
+                <div className={styles.bankRow} style={{ background: 'rgba(245, 207, 115, 0.12)', borderTop: '1px solid rgba(245, 207, 115, 0.3)', marginTop: '8px', paddingTop: '10px' }}>
+                  <span className={styles.bankLabel} style={{ color: '#f5cf73', fontWeight: 'bold' }}>Exact Amount to Transfer</span>
+                  <span className={styles.bankValue} style={{ color: '#ffffff', fontSize: '1.15rem', fontWeight: 800 }}>
+                    PKR {getTotal().toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
 
             <p style={{ fontSize: '0.9rem', fontWeight: 'bold', margin: '0 0 10px 0', color: '#ffffff' }}>
@@ -1411,7 +1619,7 @@ export default function PreorderPage() {
           {/* Totals Summary */}
           <div className={styles.summaryBox}>
             {/* Selected Items Breakdown */}
-            {totalItems > 0 && (
+            {totalItemCount > 0 && (
               <div style={{ marginBottom: '15px', borderBottom: '1px dashed rgba(226, 174, 70, 0.3)', paddingBottom: '10px' }}>
                 <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 700, color: '#f5cf73' }}>
                   Selected Cookies Breakdown:
@@ -1423,6 +1631,7 @@ export default function PreorderPage() {
                   const displayName =
                     stockStatus[item]?.flavor_name ||
                     stockStatus[item]?.name ||
+                    menuItems.find((m) => m.key === item)?.name ||
                     item
                       .split('_')
                       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1431,13 +1640,14 @@ export default function PreorderPage() {
                       .replace('Classic Bundle', 'Classic Bundle (Pack of 4)')
                       .replace('Premium Bundle', 'Premium Bundle (Pack of 4)');
 
-                  const itemTotal = qty * getItemPrice(item);
+                  const unitPrice = getItemPrice(item);
+                  const itemTotal = qty * unitPrice;
                   return (
-                    <div key={item} className={styles.summaryRow} style={{ fontSize: '0.85rem', color: '#d1ddf7', margin: '3px 0' }}>
+                    <div key={item} className={styles.summaryRow} style={{ fontSize: '0.85rem', color: '#d1ddf7', margin: '4px 0' }}>
                       <span>
-                        • {displayName} <strong style={{ color: '#ffffff' }}>x{qty}</strong>
+                        • {displayName} <strong style={{ color: '#ffffff' }}>x{qty}</strong> (@ PKR {unitPrice.toLocaleString()})
                       </span>
-                      <span>PKR {itemTotal.toLocaleString()}</span>
+                      <span style={{ fontWeight: 600 }}>PKR {itemTotal.toLocaleString()}</span>
                     </div>
                   );
                 })}
@@ -1445,16 +1655,18 @@ export default function PreorderPage() {
             )}
 
             <div className={styles.summaryRow}>
-              <span>Subtotal ({totalItems} cookies)</span>
-              <span>PKR {getSubtotal().toLocaleString()}</span>
+              <span>Subtotal ({totalCookieCount} cookie{totalCookieCount > 1 ? 's' : ''}{totalItemCount !== totalCookieCount ? ` / ${totalItemCount} item${totalItemCount > 1 ? 's' : ''}` : ''})</span>
+              <span style={{ fontWeight: 700 }}>PKR {getSubtotal().toLocaleString()}</span>
             </div>
             <div className={styles.summaryRow}>
-              <span>Delivery Fee</span>
-              <span>PKR {getDeliveryFee().toLocaleString()}</span>
+              <span>Delivery Fee ({orderType === 'delivery' ? 'Standard Delivery' : 'Takeaway - Free'})</span>
+              <span style={{ fontWeight: 700, color: getDeliveryFee() > 0 ? '#f5cf73' : '#a5d6a7' }}>
+                {getDeliveryFee() > 0 ? `PKR ${getDeliveryFee().toLocaleString()}` : 'FREE (PKR 0)'}
+              </span>
             </div>
             <div className={styles.summaryTotal}>
               <span>Total Amount</span>
-              <span>PKR {getTotal().toLocaleString()}</span>
+              <span style={{ color: '#f5cf73', fontWeight: 800 }}>PKR {getTotal().toLocaleString()}</span>
             </div>
           </div>
 
@@ -1474,6 +1686,150 @@ export default function PreorderPage() {
             {loading ? 'Processing Preorder...' : 'Place Preorder'}
           </button>
         </form>
+
+        {/* ============================================================ */}
+        {/* MODAL: CUSTOMER PREORDERS TRACKING */}
+        {/* ============================================================ */}
+        {showOrdersModal && (
+          <div className={styles.modalOverlay} onClick={() => setShowOrdersModal(false)}>
+            <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <h2 style={{ margin: 0, color: '#f5cf73', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📦</span> My Crumble Preorders
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowOrdersModal(false)}
+                  style={{ background: 'none', border: 'none', color: '#a1887f', fontSize: '1.6rem', cursor: 'pointer', lineHeight: 1 }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              <div className={styles.modalBody}>
+                {customerSessionEmail ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(226, 174, 70, 0.2)' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#d1ddf7' }}>
+                        Orders for: <strong style={{ color: '#ffffff' }}>{customerSessionEmail}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => loadCustomerOrders()}
+                        disabled={loadingOrders}
+                        style={{
+                          background: 'rgba(226, 174, 70, 0.15)',
+                          border: '1px solid rgba(226, 174, 70, 0.3)',
+                          color: '#f5cf73',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                        }}
+                      >
+                        {loadingOrders ? 'Refreshing...' : '🔄 Refresh'}
+                      </button>
+                    </div>
+
+                    {loadingOrders ? (
+                      <div style={{ textAlign: 'center', padding: '30px 0', color: '#c8a27a' }}>
+                        <p style={{ margin: 0 }}>Loading your preorders...</p>
+                      </div>
+                    ) : ordersError ? (
+                      <div style={{ background: 'rgba(239, 83, 80, 0.1)', border: '1px solid rgba(239, 83, 80, 0.3)', padding: '15px', borderRadius: '10px', color: '#ef5350', fontSize: '0.9rem' }}>
+                        ⚠ {ordersError}
+                      </div>
+                    ) : customerOrders.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '35px 20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed rgba(226, 174, 70, 0.2)' }}>
+                        <span style={{ fontSize: '2rem', display: 'block', marginBottom: '10px' }}>🍪</span>
+                        <h4 style={{ margin: '0 0 6px 0', color: '#f5cf73' }}>No Preorders Found</h4>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#a1887f' }}>
+                          You have not placed any preorders with this verified email yet.
+                        </p>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {customerOrders.map((ord) => {
+                          const isApproved = ord.payment_status === 'approved';
+                          const isRejected = ord.payment_status === 'rejected';
+
+                          const orderItems = [];
+                          if (ord.classic_chocolate_chip_qty > 0) orderItems.push(`Classic Chocolate Chip × ${ord.classic_chocolate_chip_qty}`);
+                          if (ord.double_chocolate_qty > 0) orderItems.push(`Double Chocolate × ${ord.double_chocolate_qty}`);
+                          if (ord.chocolate_chip_walnut_qty > 0) orderItems.push(`Chocolate Chip Walnut × ${ord.chocolate_chip_walnut_qty}`);
+                          if (ord.cookies_cream_qty > 0) orderItems.push(`Cookies & Cream × ${ord.cookies_cream_qty}`);
+                          if (ord.kunafa_chocolate_qty > 0) orderItems.push(`Kunafa Chocolate × ${ord.kunafa_chocolate_qty}`);
+                          if (ord.hazelnut_filled_qty > 0) orderItems.push(`Hazelnut Filled × ${ord.hazelnut_filled_qty}`);
+                          if (ord.lotus_lava_qty > 0) orderItems.push(`Lotus Lava × ${ord.lotus_lava_qty}`);
+                          if (ord.classic_bundle_qty > 0) orderItems.push(`Classic Bundle × ${ord.classic_bundle_qty}`);
+                          if (ord.premium_bundle_qty > 0) orderItems.push(`Premium Bundle × ${ord.premium_bundle_qty}`);
+
+                          return (
+                            <div key={ord.id} className={styles.orderCard}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                <div>
+                                  <span style={{ fontSize: '0.8rem', color: '#c8a27a', fontWeight: 'bold' }}>
+                                    Ref: #{ord.id.substring(0, 8).toUpperCase()}
+                                  </span>
+                                  <div style={{ fontSize: '0.78rem', color: '#9e9e9e', marginTop: '2px' }}>
+                                    Round: <strong>{ord.batch_name || 'Pre-Order 1'}</strong> &bull; {new Date(ord.created_at).toLocaleDateString()}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                  <span className={`${styles.statusBadge} ${isApproved ? styles.badgeApproved : isRejected ? styles.badgeRejected : styles.badgePending}`}>
+                                    {isApproved ? '✓ Payment Verified' : isRejected ? '✕ Payment Declined' : '⏳ Verification Pending'}
+                                  </span>
+                                  <span style={{ fontSize: '0.75rem', color: '#d1ddf7', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '10px' }}>
+                                    Order: {ord.order_status ? ord.order_status.toUpperCase() : 'RECEIVED'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div style={{ borderTop: '1px solid rgba(226, 174, 70, 0.15)', paddingTop: '8px', marginTop: '6px' }}>
+                                <p style={{ margin: '0 0 6px 0', fontSize: '0.8rem', color: '#f5cf73', fontWeight: 600 }}>
+                                  Items ({ord.order_type === 'delivery' ? '🛵 Delivery' : '🛍️ Takeaway'}):
+                                </p>
+                                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#e0e0e0', lineHeight: 1.5 }}>
+                                  {orderItems.map((it, idx) => (
+                                    <li key={idx}>{it}</li>
+                                  ))}
+                                </ul>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(226, 174, 70, 0.15)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                  <span>Total Invoice:</span>
+                                  <span style={{ color: '#f5cf73' }}>PKR {parseFloat(ord.total_amount || 0).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                    <span style={{ fontSize: '2rem', display: 'block', marginBottom: '10px' }}>🔐</span>
+                    <h3 style={{ margin: '0 0 8px 0', color: '#f5cf73', fontSize: '1.1rem' }}>Verify Email to View Your Orders</h3>
+                    <p style={{ margin: '0 0 20px 0', fontSize: '0.85rem', color: '#d1ddf7', lineHeight: 1.5 }}>
+                      Each customer's preorders are private and secure. Please verify your email address on the form using a 6-digit OTP code to track your orders.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOrdersModal(false);
+                        document.getElementById('email')?.focus();
+                      }}
+                      className={styles.verifyBtn}
+                      style={{ width: '100%', padding: '12px', fontSize: '0.9rem' }}
+                    >
+                      Go to Verification
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

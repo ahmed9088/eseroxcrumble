@@ -629,6 +629,7 @@ export default function AdminPage() {
       deliveryZip: selectedOrder.delivery_zip || '',
       deliveryLandmark: selectedOrder.delivery_landmark || '',
       paymentProofUrl: selectedOrder.payment_proof_url || '',
+      totalAmount: selectedOrder.total_amount || 0,
     });
     setIsEditing(true);
   };
@@ -685,6 +686,7 @@ export default function AdminPage() {
           deliveryZip: editForm.deliveryZip,
           deliveryLandmark: editForm.deliveryLandmark,
           paymentProofUrl: editForm.paymentProofUrl,
+          totalAmount: parseFloat(editForm.totalAmount) || 0,
         }),
       });
       const data = await res.json();
@@ -704,6 +706,7 @@ export default function AdminPage() {
           delivery_zip: editForm.deliveryZip,
           delivery_landmark: editForm.deliveryLandmark,
           payment_proof_url: editForm.paymentProofUrl,
+          total_amount: parseFloat(editForm.totalAmount) || 0,
         };
         setSelectedOrder(updated);
         setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? updated : o)));
@@ -724,8 +727,19 @@ export default function AdminPage() {
       return;
     }
 
+    const getItemPrice = (itemKey) => {
+      if (itemKey === 'classic_bundle') return Number(bundleSettings?.classic_bundle?.price) || 2200;
+      if (itemKey === 'premium_bundle') return Number(bundleSettings?.premium_bundle?.price) || 2400;
+      const stockPrice = Number(stock[itemKey]?.price);
+      if (!isNaN(stockPrice) && stockPrice > 0) return stockPrice;
+      const found = menuItems.find((m) => m.key === itemKey);
+      const menuPrice = Number(found?.price);
+      if (!isNaN(menuPrice) && menuPrice > 0) return menuPrice;
+      return 580;
+    };
+
     const subtotal = Object.entries(createFormQuantities).reduce((acc, [item, qty]) => {
-      const itemPrice = stock[item]?.price || 0;
+      const itemPrice = getItemPrice(item);
       return acc + qty * itemPrice;
     }, 0);
     const deliveryFee = createForm.orderType === 'delivery' ? 300 : 0;
@@ -869,18 +883,63 @@ export default function AdminPage() {
     document.body.removeChild(link);
   };
 
-  // Helper: Format Cookie Detail String for Modal View
+  // Helper: Format Cookie Detail String for Modal View with Dynamic Prices
   const getOrderItemsList = (o) => {
+    if (!o) return [];
     const list = [];
-    if (o.classic_chocolate_chip_qty > 0) list.push({ name: 'Classic Chocolate Chip', qty: o.classic_chocolate_chip_qty, price: 580 });
-    if (o.double_chocolate_qty > 0) list.push({ name: 'Double Chocolate', qty: o.double_chocolate_qty, price: 580 });
-    if (o.chocolate_chip_walnut_qty > 0) list.push({ name: 'Chocolate Chip Walnut', qty: o.chocolate_chip_walnut_qty, price: 580 });
-    if (o.cookies_cream_qty > 0) list.push({ name: 'Cookies & Cream', qty: o.cookies_cream_qty, price: 620 });
-    if (o.kunafa_chocolate_qty > 0) list.push({ name: 'Kunafa Chocolate', qty: o.kunafa_chocolate_qty, price: 620 });
-    if (o.hazelnut_filled_qty > 0) list.push({ name: 'Hazelnut Filled', qty: o.hazelnut_filled_qty, price: 620 });
-    if (o.lotus_lava_qty > 0) list.push({ name: 'Lotus Lava', qty: o.lotus_lava_qty, price: 620 });
-    if (o.classic_bundle_qty > 0) list.push({ name: 'Classic Bundle (pack of 4)', qty: o.classic_bundle_qty, price: 2200, customFlavours: o.classic_bundle_flavours });
-    if (o.premium_bundle_qty > 0) list.push({ name: 'Premium Bundle (pack of 4)', qty: o.premium_bundle_qty, price: 2400, customFlavours: o.premium_bundle_flavours });
+
+    const getPrice = (key, defaultPrice) => {
+      const stockPrice = Number(stock[key]?.price);
+      if (!isNaN(stockPrice) && stockPrice > 0) return stockPrice;
+      const foundMenuItem = menuItems.find((m) => m.key === key);
+      const menuPrice = Number(foundMenuItem?.price);
+      if (!isNaN(menuPrice) && menuPrice > 0) return menuPrice;
+      if (key === 'classic_bundle') return Number(bundleSettings?.classic_bundle?.price) || defaultPrice;
+      if (key === 'premium_bundle') return Number(bundleSettings?.premium_bundle?.price) || defaultPrice;
+      return defaultPrice;
+    };
+
+    if (o.classic_chocolate_chip_qty > 0) {
+      list.push({ key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', qty: o.classic_chocolate_chip_qty, price: getPrice('classic_chocolate_chip', 580) });
+    }
+    if (o.double_chocolate_qty > 0) {
+      list.push({ key: 'double_chocolate', name: 'Double Chocolate', qty: o.double_chocolate_qty, price: getPrice('double_chocolate', 580) });
+    }
+    if (o.chocolate_chip_walnut_qty > 0) {
+      list.push({ key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', qty: o.chocolate_chip_walnut_qty, price: getPrice('chocolate_chip_walnut', 580) });
+    }
+    if (o.cookies_cream_qty > 0) {
+      list.push({ key: 'cookies_cream', name: 'Cookies & Cream', qty: o.cookies_cream_qty, price: getPrice('cookies_cream', 620) });
+    }
+    if (o.kunafa_chocolate_qty > 0) {
+      list.push({ key: 'kunafa_chocolate', name: 'Kunafa Chocolate', qty: o.kunafa_chocolate_qty, price: getPrice('kunafa_chocolate', 620) });
+    }
+    if (o.hazelnut_filled_qty > 0) {
+      list.push({ key: 'hazelnut_filled', name: 'Hazelnut Filled', qty: o.hazelnut_filled_qty, price: getPrice('hazelnut_filled', 620) });
+    }
+    if (o.lotus_lava_qty > 0) {
+      list.push({ key: 'lotus_lava', name: 'Lotus Lava', qty: o.lotus_lava_qty, price: getPrice('lotus_lava', 620) });
+    }
+
+    // Dynamic menu items if stored on order
+    menuItems.forEach((m) => {
+      const standardKeys = ['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'];
+      if (!standardKeys.includes(m.key) && o[`${m.key}_qty`] > 0) {
+        list.push({
+          key: m.key,
+          name: m.name,
+          qty: o[`${m.key}_qty`],
+          price: getPrice(m.key, m.price || 600),
+        });
+      }
+    });
+
+    if (o.classic_bundle_qty > 0) {
+      list.push({ key: 'classic_bundle', name: 'Classic Bundle (pack of 4)', qty: o.classic_bundle_qty, price: getPrice('classic_bundle', 2200), customFlavours: o.classic_bundle_flavours });
+    }
+    if (o.premium_bundle_qty > 0) {
+      list.push({ key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', qty: o.premium_bundle_qty, price: getPrice('premium_bundle', 2400), customFlavours: o.premium_bundle_flavours });
+    }
     return list;
   };
 
@@ -1993,6 +2052,30 @@ export default function AdminPage() {
                           <option value="delivery">Delivery</option>
                         </select>
                       </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <label style={{ fontSize: '0.75rem', color: '#c8a27a' }}>Total Amount (PKR)</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const orderItems = getOrderItemsList(selectedOrder);
+                              const sub = orderItems.reduce((acc, it) => acc + it.qty * it.price, 0);
+                              const fee = editForm.orderType === 'delivery' ? 300 : 0;
+                              handleEditFormChange('totalAmount', sub + fee);
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#f5cf73', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            🔄 Auto-Calculate Total
+                          </button>
+                        </div>
+                        <input
+                          type="number"
+                          value={editForm.totalAmount}
+                          className={styles.stockInput}
+                          style={{ width: '100%', fontWeight: 'bold', color: '#f5cf73' }}
+                          onChange={(e) => handleEditFormChange('totalAmount', parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
                     </div>
 
                     {editForm.orderType === 'delivery' && (
@@ -2196,35 +2279,75 @@ export default function AdminPage() {
                     )}
 
                     <div className={styles.infoSection}>
-                      <h4>🍪 Order Quantities</h4>
-                      {getOrderItemsList(selectedOrder).map((item) => (
-                        <div key={item.name} style={{ marginBottom: '10px', fontSize: '0.85rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                            <span>{item.name} x {item.qty}</span>
-                            <span>PKR {(item.qty * item.price).toLocaleString()}</span>
-                          </div>
-                          {item.customFlavours && (
-                            <div style={{ color: '#a1887f', fontSize: '0.75rem', marginTop: '3px', paddingLeft: '10px' }}>
-                              Flavours: {item.customFlavours}
+                      {(() => {
+                        const orderItems = getOrderItemsList(selectedOrder);
+                        const itemsSubtotal = orderItems.reduce((acc, it) => acc + it.qty * it.price, 0);
+                        const isDelivery = selectedOrder.order_type === 'delivery';
+                        const deliveryFee = isDelivery ? 300 : 0;
+                        const calculatedTotal = itemsSubtotal + deliveryFee;
+                        const actualInvoiceTotal = parseInt(selectedOrder.total_amount, 10) || 0;
+                        const hasDiscrepancy = actualInvoiceTotal !== calculatedTotal;
+
+                        return (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <h4 style={{ margin: 0 }}>🍪 Order Quantities & Breakdown</h4>
+                              <span style={{ fontSize: '0.75rem', background: 'rgba(200, 162, 122, 0.15)', padding: '2px 8px', borderRadius: '4px', color: '#c8a27a' }}>
+                                {isDelivery ? '🛵 Delivery' : '🛍️ Takeaway'}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      ))}
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          fontWeight: 'bold',
-                          borderTop: '1px solid rgba(200, 162, 122, 0.15)',
-                          paddingTop: '10px',
-                          marginTop: '10px',
-                          fontSize: '0.95rem',
-                          color: '#c8a27a',
-                        }}
-                      >
-                        <span>Total Invoice:</span>
-                        <span>PKR {parseInt(selectedOrder.total_amount, 10).toLocaleString()}</span>
-                      </div>
+
+                            {orderItems.map((item) => (
+                              <div key={item.key || item.name} style={{ marginBottom: '10px', fontSize: '0.85rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                                  <span>
+                                    {item.name} <span style={{ color: '#c8a27a', fontWeight: 'normal', fontSize: '0.8rem' }}>x{item.qty} (@ PKR {item.price.toLocaleString()})</span>
+                                  </span>
+                                  <span>PKR {(item.qty * item.price).toLocaleString()}</span>
+                                </div>
+                                {item.customFlavours && (
+                                  <div style={{ color: '#a1887f', fontSize: '0.75rem', marginTop: '3px', paddingLeft: '10px' }}>
+                                    Flavours: {item.customFlavours}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+
+                            <div style={{ borderTop: '1px solid rgba(200, 162, 122, 0.15)', paddingTop: '10px', marginTop: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '5px', color: '#d1ddf7' }}>
+                                <span>Items Subtotal:</span>
+                                <span style={{ fontWeight: 600 }}>PKR {itemsSubtotal.toLocaleString()}</span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '8px', color: '#d1ddf7' }}>
+                                <span>Delivery Fee ({isDelivery ? 'Standard Delivery' : 'Takeaway / Free'}):</span>
+                                <span style={{ fontWeight: 600, color: deliveryFee > 0 ? '#f5cf73' : '#a5d6a7' }}>
+                                  {deliveryFee > 0 ? `PKR ${deliveryFee.toLocaleString()}` : 'FREE (PKR 0)'}
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  fontWeight: 'bold',
+                                  borderTop: '1px solid rgba(200, 162, 122, 0.25)',
+                                  paddingTop: '8px',
+                                  marginTop: '6px',
+                                  fontSize: '1rem',
+                                  color: '#c8a27a',
+                                }}
+                              >
+                                <span>Total Invoice:</span>
+                                <span style={{ color: '#ffffff', fontWeight: 800 }}>PKR {actualInvoiceTotal.toLocaleString()}</span>
+                              </div>
+                              {hasDiscrepancy && (
+                                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#ffb74d', background: 'rgba(255, 183, 77, 0.1)', padding: '6px 10px', borderRadius: '4px' }}>
+                                  ℹ Note: Calculated sum is PKR {calculatedTotal.toLocaleString()} (Recorded Invoice: PKR {actualInvoiceTotal.toLocaleString()}).
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -2970,8 +3093,86 @@ export default function AdminPage() {
                           />
                         </div>
                       ))}
+
+                      {/* Bundles */}
+                      <div style={{ display: 'contents' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#f5cf73' }}>
+                          Classic Bundle (pack of 4) (PKR {bundleSettings.classic_bundle?.price || 2200})
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={createFormQuantities.classic_bundle || 0}
+                          className={styles.stockInput}
+                          style={{ width: '60px' }}
+                          onChange={(e) =>
+                            setCreateFormQuantities((prev) => ({
+                              ...prev,
+                              classic_bundle: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div style={{ display: 'contents' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#f5cf73' }}>
+                          Premium Bundle (pack of 4) (PKR {bundleSettings.premium_bundle?.price || 2400})
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={createFormQuantities.premium_bundle || 0}
+                          className={styles.stockInput}
+                          style={{ width: '60px' }}
+                          onChange={(e) =>
+                            setCreateFormQuantities((prev) => ({
+                              ...prev,
+                              premium_bundle: parseInt(e.target.value, 10) || 0,
+                            }))
+                          }
+                        />
+                      </div>
                     </div>
                   </div>
+
+                  {/* Real-time Custom Order Price Preview */}
+                  {(() => {
+                    const getItemPrice = (itemKey) => {
+                      if (itemKey === 'classic_bundle') return Number(bundleSettings?.classic_bundle?.price) || 2200;
+                      if (itemKey === 'premium_bundle') return Number(bundleSettings?.premium_bundle?.price) || 2400;
+                      const stockPrice = Number(stock[itemKey]?.price);
+                      if (!isNaN(stockPrice) && stockPrice > 0) return stockPrice;
+                      const found = menuItems.find((m) => m.key === itemKey);
+                      const menuPrice = Number(found?.price);
+                      if (!isNaN(menuPrice) && menuPrice > 0) return menuPrice;
+                      return 580;
+                    };
+                    const previewSubtotal = Object.entries(createFormQuantities).reduce((acc, [item, qty]) => {
+                      return acc + qty * getItemPrice(item);
+                    }, 0);
+                    const isDelivery = createForm.orderType === 'delivery';
+                    const previewFee = isDelivery ? 300 : 0;
+                    const previewTotal = previewSubtotal + previewFee;
+
+                    return (
+                      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(200, 162, 122, 0.2)', borderRadius: '8px', padding: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '5px' }}>
+                          <span>Subtotal:</span>
+                          <span style={{ fontWeight: 600 }}>PKR {previewSubtotal.toLocaleString()}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                          <span>Delivery Fee ({isDelivery ? 'Delivery' : 'Takeaway - Free'}):</span>
+                          <span style={{ fontWeight: 600, color: previewFee > 0 ? '#f5cf73' : '#a5d6a7' }}>
+                            {previewFee > 0 ? `PKR ${previewFee.toLocaleString()}` : 'FREE (PKR 0)'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', fontWeight: 'bold', borderTop: '1px solid rgba(200, 162, 122, 0.2)', paddingTop: '6px', color: '#c8a27a' }}>
+                          <span>Calculated Total:</span>
+                          <span style={{ color: '#ffffff', fontWeight: 800 }}>PKR {previewTotal.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                     <button

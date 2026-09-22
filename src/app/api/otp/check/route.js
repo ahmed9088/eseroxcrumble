@@ -1,11 +1,10 @@
+import { cookies } from 'next/headers';
 import { supabaseAdmin } from '../../../../lib/supabase';
+import { getCustomerSession } from '../../../../lib/session';
 import { NextResponse } from 'next/server';
 
-// In-memory fallback store
-global.__otpMemoryStore = global.__otpMemoryStore || new Map();
-
 // GET /api/otp/check?email=...
-// Checks if an email is already verified (either placed a previous order OR verified via OTP)
+// Checks if the CURRENT BROWSER has a verified customer session matching this email
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -17,17 +16,21 @@ export async function GET(request) {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // 0. Check in-memory store
-    const memEntry = global.__otpMemoryStore.get(cleanEmail);
-    if (memEntry && memEntry.verified) {
+    // 1. Check HTTP-only Customer Session Cookie for this browser
+    const cookieStore = await cookies();
+    const session = await getCustomerSession(cookieStore);
+
+    if (session && session.email === cleanEmail) {
       return NextResponse.json({
         isVerified: true,
-        isExistingCustomer: false,
-        message: 'Your email is verified! Form unlocked.',
+        email: session.email,
+        isExistingCustomer: true,
+        message: 'Active verified session! Form unlocked.',
       });
     }
 
-    // 1. Check if customer placed a previous order
+    // 2. Check if this email has past orders to give friendly prompt
+    let hasPastOrders = false;
     try {
       const { data: existingOrders } = await supabaseAdmin
         .from('orders')
@@ -36,40 +39,19 @@ export async function GET(request) {
         .limit(1);
 
       if (existingOrders && existingOrders.length > 0) {
-        return NextResponse.json({
-          isVerified: true,
-          isExistingCustomer: true,
-          message: 'You are a verified returning customer! Form unlocked.',
-        });
+        hasPastOrders = true;
       }
     } catch (ordErr) {
-      console.warn('[OTP Check] Orders lookup warning:', ordErr);
-    }
-
-    // 2. Check if email was verified in email_verifications table
-    try {
-      const { data: verifications } = await supabaseAdmin
-        .from('email_verifications')
-        .select('id')
-        .ilike('email', cleanEmail)
-        .eq('verified', true)
-        .limit(1);
-
-      if (verifications && verifications.length > 0) {
-        return NextResponse.json({
-          isVerified: true,
-          isExistingCustomer: false,
-          message: 'Your email is already verified! Form unlocked.',
-        });
-      }
-    } catch (verErr) {
-      console.warn('[OTP Check] Verification lookup warning:', verErr);
+      // Ignore
     }
 
     return NextResponse.json({
       isVerified: false,
-      isExistingCustomer: false,
-      message: 'Email verification is required.',
+      requiresOtp: true,
+      isExistingCustomer: hasPastOrders,
+      message: hasPastOrders
+        ? 'Welcome back! For your security, please verify the 6-digit code sent to your email.'
+        : 'Email verification is required.',
     });
   } catch (err) {
     console.error('OTP Check error:', err);

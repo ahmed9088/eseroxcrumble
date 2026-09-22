@@ -1,4 +1,6 @@
+import { cookies } from 'next/headers';
 import { supabaseAdmin } from '../../../../lib/supabase';
+import { setCustomerSessionCookie } from '../../../../lib/session';
 import { NextResponse } from 'next/server';
 
 // In-memory fallback store
@@ -42,7 +44,14 @@ export async function POST(request) {
         // Silent
       }
 
-      return NextResponse.json({ success: true, message: 'Email verified successfully.' });
+      const cookieStore = await cookies();
+      await setCustomerSessionCookie(cookieStore, cleanEmail);
+
+      return NextResponse.json({
+        success: true,
+        verifiedEmail: cleanEmail,
+        message: 'Email verified successfully and session established.',
+      });
     }
 
     // 2. Lookup code in Supabase database
@@ -82,7 +91,14 @@ export async function POST(request) {
           verified: true,
         });
 
-        return NextResponse.json({ success: true, message: 'Email verified successfully.' });
+        const cookieStore = await cookies();
+        await setCustomerSessionCookie(cookieStore, cleanEmail);
+
+        return NextResponse.json({
+          success: true,
+          verifiedEmail: cleanEmail,
+          message: 'Email verified successfully and session established.',
+        });
       }
     } catch (dbEx) {
       console.warn('Database exception during OTP verify:', dbEx);

@@ -95,7 +95,8 @@ export async function PUT(request) {
       deliveryState,
       deliveryZip,
       deliveryLandmark,
-      paymentProofUrl
+      paymentProofUrl,
+      totalAmount
     } = await request.json();
 
     if (!orderId) {
@@ -194,6 +195,9 @@ export async function PUT(request) {
     if (deliveryZip !== undefined) updates.delivery_zip = deliveryZip;
     if (deliveryLandmark !== undefined) updates.delivery_landmark = deliveryLandmark;
     if (paymentProofUrl !== undefined) updates.payment_proof_url = paymentProofUrl;
+    if (totalAmount !== undefined && totalAmount !== null && !isNaN(parseFloat(totalAmount))) {
+      updates.total_amount = parseFloat(totalAmount);
+    }
 
     let { data: updatedOrder, error: updateError } = await supabaseAdmin
       .from('orders')
@@ -284,9 +288,10 @@ export async function PUT(request) {
                 <ol style="font-size: 14px; line-height: 1.6; color: #4e342e;">
                   <li>Verify that you transferred the exact amount (<strong>${order.total_amount.toLocaleString()} PKR</strong>) to the correct account:
                     <ul style="margin: 5px 0;">
-                      <li>Bank: United Bank Limited</li>
-                      <li>Account Title: Shahrez Naeem Memon</li>
-                      <li>Account Number: 1284358920124</li>
+                      <li>Bank: Meezan Bank</li>
+                      <li>Account Title: ANASHA SHAKEEL</li>
+                      <li>Account Number: 99500109179059</li>
+                      <li>IBAN: PK36MEZN0099500109179059</li>
                     </ul>
                   </li>
                   <li>Please reply directly to this email with a clear, full screenshot of your successful transaction slip showing the date, amount, and reference number.</li>
@@ -508,17 +513,37 @@ export async function POST(request) {
     };
 
     if (classicBundleQty > 0 && classicBundleFlavours) {
-      classicBundleFlavours.split(',').forEach(flv => {
-        const key = mapFriendlyToKey(flv);
-        if (key) deductions[key] = (deductions[key] || 0) + classicBundleQty;
-      });
+      if (classicBundleFlavours.includes('|')) {
+        classicBundleFlavours.split('|').forEach((pack) => {
+          const flvs = pack.replace(/Pack\s*#\d+:\s*\[?/, '').replace(/\]?$/, '').split(',');
+          flvs.forEach((flv) => {
+            const key = mapFriendlyToKey(flv);
+            if (key) deductions[key] = (deductions[key] || 0) + 1;
+          });
+        });
+      } else {
+        classicBundleFlavours.split(',').forEach((flv) => {
+          const key = mapFriendlyToKey(flv);
+          if (key) deductions[key] = (deductions[key] || 0) + 1;
+        });
+      }
     }
 
     if (premiumBundleQty > 0 && premiumBundleFlavours) {
-      premiumBundleFlavours.split(',').forEach(flv => {
-        const key = mapFriendlyToKey(flv);
-        if (key) deductions[key] = (deductions[key] || 0) + premiumBundleQty;
-      });
+      if (premiumBundleFlavours.includes('|')) {
+        premiumBundleFlavours.split('|').forEach((pack) => {
+          const flvs = pack.replace(/Pack\s*#\d+:\s*\[?/, '').replace(/\]?$/, '').split(',');
+          flvs.forEach((flv) => {
+            const key = mapFriendlyToKey(flv);
+            if (key) deductions[key] = (deductions[key] || 0) + 1;
+          });
+        });
+      } else {
+        premiumBundleFlavours.split(',').forEach((flv) => {
+          const key = mapFriendlyToKey(flv);
+          if (key) deductions[key] = (deductions[key] || 0) + 1;
+        });
+      }
     }
 
     // Save order details in DB and deduct stock inside transaction

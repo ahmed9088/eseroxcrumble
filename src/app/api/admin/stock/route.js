@@ -41,7 +41,10 @@ export async function GET() {
           name: item.flavor_name || item.flavor_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
           available: item.available_stock,
           initial: item.initial_stock,
-          price: item.price,
+          price:
+            item.price !== null && item.price !== undefined && Number(item.price) > 0
+              ? Number(item.price)
+              : (isClassic ? 580 : 620),
           is_active: item.is_active,
           category: item.category || (isClassic ? 'classic' : 'premium'),
         };
@@ -86,16 +89,16 @@ export async function GET() {
 
     stockMap['classic_bundle'] = {
       name: 'Classic Bundle (pack of 4)',
-      is_active: bundleSettings.classic_bundle.is_active && hasClassicActive,
-      price: bundleSettings.classic_bundle.price,
+      is_active: Boolean(bundleSettings.classic_bundle?.is_active && hasClassicActive),
+      price: Number(bundleSettings.classic_bundle?.price) > 0 ? Number(bundleSettings.classic_bundle.price) : 2200,
       isBundle: true,
       category: 'bundle',
     };
 
     stockMap['premium_bundle'] = {
       name: 'Premium Bundle (pack of 4)',
-      is_active: bundleSettings.premium_bundle.is_active && hasPremiumActive,
-      price: bundleSettings.premium_bundle.price,
+      is_active: Boolean(bundleSettings.premium_bundle?.is_active && hasPremiumActive),
+      price: Number(bundleSettings.premium_bundle?.price) > 0 ? Number(bundleSettings.premium_bundle.price) : 2400,
       isBundle: true,
       category: 'bundle',
     };
