@@ -11,15 +11,18 @@ async function isAuthenticated() {
 }
 
 const defaultStockList = [
-  { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', available: 200, initial: 200, price: 580, is_active: true, category: 'classic' },
-  { key: 'double_chocolate', name: 'Double Chocolate', available: 200, initial: 200, price: 580, is_active: true, category: 'classic' },
-  { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', available: 100, initial: 100, price: 580, is_active: true, category: 'classic' },
-  { key: 'cookies_cream', name: 'Cookies & Cream', available: 150, initial: 150, price: 620, is_active: true, category: 'premium' },
-  { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', available: 100, initial: 100, price: 620, is_active: true, category: 'premium' },
-  { key: 'hazelnut_filled', name: 'Hazelnut Filled', available: 150, initial: 150, price: 620, is_active: true, category: 'premium' },
-  { key: 'lotus_lava', name: 'Lotus Lava', available: 100, initial: 100, price: 620, is_active: true, category: 'premium' },
-  { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', available: 100, initial: 100, price: 650, is_active: true, category: 'special' },
-  { key: 'crumble_pot', name: 'Crumble Pot', available: 50, initial: 50, price: 3500, is_active: true, category: 'special' },
+  { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', available: 188, initial: 200, price: 580, is_active: true, category: 'classic' },
+  { key: 'double_chocolate', name: 'Double Chocolate', available: 189, initial: 200, price: 580, is_active: true, category: 'classic' },
+  { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', available: 98, initial: 100, price: 580, is_active: true, category: 'classic' },
+  { key: 'midnight_cookies_and_cream', name: 'Midnight Cookies and Cream', available: 43, initial: 50, price: 580, is_active: true, category: 'classic' },
+  { key: 'peanut_butter_chocolate_chip', name: 'Peanut Butter Chocolate Chip', available: 49, initial: 50, price: 580, is_active: true, category: 'classic' },
+  { key: 'cookies_cream', name: 'Cookies & Cream', available: 146, initial: 150, price: 620, is_active: true, category: 'premium' },
+  { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', available: 94, initial: 100, price: 620, is_active: true, category: 'premium' },
+  { key: 'hazelnut_filled', name: 'Hazelnut Filled', available: 144, initial: 150, price: 620, is_active: true, category: 'premium' },
+  { key: 'lotus_lava', name: 'Lotus Lava', available: 96, initial: 100, price: 620, is_active: true, category: 'premium' },
+  { key: 'red_velvet_cream_cheese', name: 'Red Velvet Cream Cheese', available: 46, initial: 50, price: 620, is_active: true, category: 'premium' },
+  { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', available: 97, initial: 100, price: 650, is_active: true, category: 'special' },
+  { key: 'crumble_pot', name: 'Crumble Pot', available: 49, initial: 50, price: 3500, is_active: true, category: 'special' },
 ];
 
 export async function GET() {
@@ -52,30 +55,13 @@ export async function GET() {
         };
       });
 
-      // Ensure essential catalog items (Crumble Pot, Dot Cake Cookie) are always included
+      // Ensure all catalog items are present if missing from database
       const existingKeys = new Set(items.map((i) => i.key));
-      if (!existingKeys.has('crumble_pot')) {
-        items.push({
-          key: 'crumble_pot',
-          name: 'Crumble Pot',
-          available: 50,
-          initial: 50,
-          price: 3500,
-          is_active: true,
-          category: 'special',
-        });
-      }
-      if (!existingKeys.has('dot_cake_cookie')) {
-        items.push({
-          key: 'dot_cake_cookie',
-          name: 'Dot Cake Cookie',
-          available: 100,
-          initial: 100,
-          price: 650,
-          is_active: true,
-          category: 'special',
-        });
-      }
+      defaultStockList.forEach((defItem) => {
+        if (!existingKeys.has(defItem.key)) {
+          items.push({ ...defItem });
+        }
+      });
     }
 
     // Fetch bundle configurations from settings if available

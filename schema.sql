@@ -77,7 +77,8 @@ create table if not exists public.orders (
   -- Payment Verification
   payment_proof_url text not null,
   payment_status text default 'pending' not null check (payment_status in ('pending', 'approved', 'rejected')),
-  order_status text default 'received' not null check (order_status in ('received', 'preparing', 'completed', 'cancelled'))
+  order_status text default 'received' not null check (order_status in ('received', 'preparing', 'completed', 'cancelled')),
+  items_breakdown jsonb
 );
 
 -- Create index for filtering orders

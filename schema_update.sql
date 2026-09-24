@@ -65,10 +65,26 @@ begin
   end if;
 end $$;
 
--- 5. Ensure special catalog items (Crumble Pot, Dot Cake Cookie) exist in cookie_stock
+-- 5. Ensure all live menu items exist in cookie_stock with exact categories and inventory
 insert into public.cookie_stock (flavor_key, flavor_name, price, initial_stock, available_stock, is_active, category)
 values
+  ('classic_chocolate_chip', 'Classic Chocolate Chip', 580, 200, 188, true, 'classic'),
+  ('double_chocolate', 'Double Chocolate', 580, 200, 189, true, 'classic'),
+  ('chocolate_chip_walnut', 'Chocolate Chip Walnut', 580, 100, 98, true, 'classic'),
+  ('midnight_cookies_and_cream', 'Midnight Cookies and Cream', 580, 50, 43, true, 'classic'),
+  ('peanut_butter_chocolate_chip', 'Peanut Butter Chocolate Chip', 580, 50, 49, true, 'classic'),
+  ('cookies_cream', 'Cookies & Cream', 620, 150, 146, true, 'premium'),
+  ('kunafa_chocolate', 'Kunafa Chocolate', 620, 100, 94, true, 'premium'),
+  ('hazelnut_filled', 'Hazelnut Filled', 620, 150, 144, true, 'premium'),
+  ('lotus_lava', 'Lotus Lava', 620, 100, 96, true, 'premium'),
+  ('red_velvet_cream_cheese', 'Red Velvet Cream Cheese', 620, 50, 46, true, 'premium'),
   ('dot_cake_cookie', 'Dot Cake Cookie', 650, 100, 97, true, 'special'),
   ('crumble_pot', 'Crumble Pot', 3500, 50, 49, true, 'special')
-on conflict (flavor_key) do nothing;
+on conflict (flavor_key) do update set
+  flavor_name = excluded.flavor_name,
+  price = excluded.price,
+  initial_stock = excluded.initial_stock,
+  available_stock = excluded.available_stock,
+  category = excluded.category,
+  is_active = excluded.is_active;
 

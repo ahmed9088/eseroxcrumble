@@ -7,10 +7,13 @@ const DEFAULT_MENU_ITEMS = [
   { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: 580, category: 'classic' },
   { key: 'double_chocolate', name: 'Double Chocolate', price: 580, category: 'classic' },
   { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: 580, category: 'classic' },
+  { key: 'midnight_cookies_and_cream', name: 'Midnight Cookies and Cream', price: 580, category: 'classic' },
+  { key: 'peanut_butter_chocolate_chip', name: 'Peanut Butter Chocolate Chip', price: 580, category: 'classic' },
   { key: 'cookies_cream', name: 'Cookies & Cream', price: 620, category: 'premium' },
   { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: 620, category: 'premium' },
   { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: 620, category: 'premium' },
   { key: 'lotus_lava', name: 'Lotus Lava', price: 620, category: 'premium' },
+  { key: 'red_velvet_cream_cheese', name: 'Red Velvet Cream Cheese', price: 620, category: 'premium' },
   { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650, category: 'special' },
   { key: 'crumble_pot', name: 'Crumble Pot', price: 3500, category: 'special' },
 ];
@@ -19,10 +22,13 @@ const DEFAULT_STOCK_MAP = {
   classic_chocolate_chip: { price: 580, name: 'Classic Chocolate Chip', flavor_name: 'Classic Chocolate Chip' },
   double_chocolate: { price: 580, name: 'Double Chocolate', flavor_name: 'Double Chocolate' },
   chocolate_chip_walnut: { price: 580, name: 'Chocolate Chip Walnut', flavor_name: 'Chocolate Chip Walnut' },
+  midnight_cookies_and_cream: { price: 580, name: 'Midnight Cookies and Cream', flavor_name: 'Midnight Cookies and Cream' },
+  peanut_butter_chocolate_chip: { price: 580, name: 'Peanut Butter Chocolate Chip', flavor_name: 'Peanut Butter Chocolate Chip' },
   cookies_cream: { price: 620, name: 'Cookies & Cream', flavor_name: 'Cookies & Cream' },
   kunafa_chocolate: { price: 620, name: 'Kunafa Chocolate', flavor_name: 'Kunafa Chocolate' },
   hazelnut_filled: { price: 620, name: 'Hazelnut Filled', flavor_name: 'Hazelnut Filled' },
   lotus_lava: { price: 620, name: 'Lotus Lava', flavor_name: 'Lotus Lava' },
+  red_velvet_cream_cheese: { price: 620, name: 'Red Velvet Cream Cheese', flavor_name: 'Red Velvet Cream Cheese' },
   dot_cake_cookie: { price: 650, name: 'Dot Cake Cookie', flavor_name: 'Dot Cake Cookie' },
   crumble_pot: { price: 3500, name: 'Crumble Pot', flavor_name: 'Crumble Pot' },
 };
@@ -1004,6 +1010,18 @@ export default function AdminPage() {
         breakdown = JSON.parse(breakdown);
       } catch (e) {
         breakdown = null;
+      }
+    }
+    // Check backup tag in delivery_landmark if items_breakdown is not present
+    if ((!Array.isArray(breakdown) || breakdown.length === 0) && o.delivery_landmark?.includes('[ITEMS]:')) {
+      try {
+        const jsonStr = o.delivery_landmark.split('[ITEMS]:')[1];
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          breakdown = parsed;
+        }
+      } catch (e) {
+        // ignore
       }
     }
     if (Array.isArray(breakdown) && breakdown.length > 0) {

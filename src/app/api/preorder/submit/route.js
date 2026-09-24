@@ -153,8 +153,29 @@ export async function POST(request) {
       ...dynamicItems,
     };
 
+    // Fetch dynamic stock flavors to map bundle choices accurately
+    const { data: allStockRows } = await supabaseAdmin.from('cookie_stock').select('flavor_key, flavor_name');
+    const dynamicKeyMap = new Map();
+    (allStockRows || []).forEach((row) => {
+      if (row.flavor_name && row.flavor_key) {
+        dynamicKeyMap.set(row.flavor_name.trim().toLowerCase(), row.flavor_key);
+        dynamicKeyMap.set(row.flavor_key.toLowerCase(), row.flavor_key);
+      }
+    });
+
     const mapFriendlyToKey = (name) => {
       const n = name.trim().toLowerCase();
+      if (dynamicKeyMap.has(n)) return dynamicKeyMap.get(n);
+      const cleanN = n.replace(/[^a-z0-9]/g, '');
+      for (const [fName, fKey] of dynamicKeyMap.entries()) {
+        if (cleanN === fName.replace(/[^a-z0-9]/g, '')) return fKey;
+      }
+      for (const [fName, fKey] of dynamicKeyMap.entries()) {
+        if (n.includes(fName) || fName.includes(n)) return fKey;
+      }
+      if (n.includes('peanut')) return 'peanut_butter_chocolate_chip';
+      if (n.includes('midnight')) return 'midnight_cookies_and_cream';
+      if (n.includes('red velvet')) return 'red_velvet_cream_cheese';
       if (n.includes('walnut')) return 'chocolate_chip_walnut';
       if (n.includes('classic') || n.includes('chip')) return 'classic_chocolate_chip';
       if (n.includes('double')) return 'double_chocolate';
@@ -259,6 +280,7 @@ export async function POST(request) {
         p_total_amount: totalAmount,
         p_payment_proof_url: paymentProofUrl,
         p_deductions: deductions,
+        p_items_breakdown: itemsBreakdown,
       });
       rpcResult = res.data;
       orderError = res.error;
@@ -338,7 +360,14 @@ export async function POST(request) {
       let insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: activeBatchName }).select('id').single();
       if (insRes.error && insRes.error.message?.includes('items_breakdown')) {
         delete orderData.items_breakdown;
-        insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: activeBatchName }).select('id').single();
+        // Store breakdown safely in delivery_landmark as backup so items are NEVER lost
+        const backupData = {
+          ...orderData,
+          delivery_landmark: orderData.delivery_landmark
+            ? `${orderData.delivery_landmark} [ITEMS]:${JSON.stringify(itemsBreakdown)}`
+            : `[ITEMS]:${JSON.stringify(itemsBreakdown)}`,
+        };
+        insRes = await supabaseAdmin.from('orders').insert({ ...backupData, batch_name: activeBatchName }).select('id').single();
       }
       if (insRes.error && insRes.error.message?.includes('batch_name')) {
         insRes = await supabaseAdmin.from('orders').insert(orderData).select('id').single();
@@ -357,7 +386,11 @@ export async function POST(request) {
           .update({ batch_name: activeBatchName, items_breakdown: itemsBreakdown })
           .eq('id', orderId);
         if (updErr && updErr.message?.includes('items_breakdown')) {
-          await supabaseAdmin.from('orders').update({ batch_name: activeBatchName }).eq('id', orderId);
+          const { data: currOrd } = await supabaseAdmin.from('orders').select('delivery_landmark').eq('id', orderId).single();
+          const landmarkBackup = currOrd?.delivery_landmark
+            ? `${currOrd.delivery_landmark} [ITEMS]:${JSON.stringify(itemsBreakdown)}`
+            : `[ITEMS]:${JSON.stringify(itemsBreakdown)}`;
+          await supabaseAdmin.from('orders').update({ batch_name: activeBatchName, delivery_landmark: landmarkBackup }).eq('id', orderId);
         }
       } catch (err) {
         try {

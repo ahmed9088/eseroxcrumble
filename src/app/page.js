@@ -17,15 +17,18 @@ const COOKIE_PRICES = {
 };
 
 const DEFAULT_STOCK_STATUS = {
-  classic_chocolate_chip: { price: 580, available: 200, is_active: true, name: 'Classic Chocolate Chip', category: 'classic' },
-  double_chocolate: { price: 580, available: 200, is_active: true, name: 'Double Chocolate', category: 'classic' },
-  chocolate_chip_walnut: { price: 580, available: 100, is_active: true, name: 'Chocolate Chip Walnut', category: 'classic' },
-  cookies_cream: { price: 620, available: 150, is_active: true, name: 'Cookies & Cream', category: 'premium' },
-  kunafa_chocolate: { price: 620, available: 100, is_active: true, name: 'Kunafa Chocolate', category: 'premium' },
-  hazelnut_filled: { price: 620, available: 150, is_active: true, name: 'Hazelnut Filled', category: 'premium' },
-  lotus_lava: { price: 620, available: 100, is_active: true, name: 'Lotus Lava', category: 'premium' },
-  dot_cake_cookie: { price: 650, available: 100, is_active: true, name: 'Dot Cake Cookie', category: 'special' },
-  crumble_pot: { price: 3500, available: 50, is_active: true, name: 'Crumble Pot', category: 'special' },
+  classic_chocolate_chip: { price: 580, available: 188, is_active: true, name: 'Classic Chocolate Chip', category: 'classic' },
+  double_chocolate: { price: 580, available: 189, is_active: true, name: 'Double Chocolate', category: 'classic' },
+  chocolate_chip_walnut: { price: 580, available: 98, is_active: true, name: 'Chocolate Chip Walnut', category: 'classic' },
+  midnight_cookies_and_cream: { price: 580, available: 43, is_active: true, name: 'Midnight Cookies and Cream', category: 'classic' },
+  peanut_butter_chocolate_chip: { price: 580, available: 49, is_active: true, name: 'Peanut Butter Chocolate Chip', category: 'classic' },
+  cookies_cream: { price: 620, available: 146, is_active: true, name: 'Cookies & Cream', category: 'premium' },
+  kunafa_chocolate: { price: 620, available: 94, is_active: true, name: 'Kunafa Chocolate', category: 'premium' },
+  hazelnut_filled: { price: 620, available: 144, is_active: true, name: 'Hazelnut Filled', category: 'premium' },
+  lotus_lava: { price: 620, available: 96, is_active: true, name: 'Lotus Lava', category: 'premium' },
+  red_velvet_cream_cheese: { price: 620, available: 46, is_active: true, name: 'Red Velvet Cream Cheese', category: 'premium' },
+  dot_cake_cookie: { price: 650, available: 97, is_active: true, name: 'Dot Cake Cookie', category: 'special' },
+  crumble_pot: { price: 3500, available: 49, is_active: true, name: 'Crumble Pot', category: 'special' },
   classic_bundle: { price: 2200, is_active: true, name: 'Classic Bundle (pack of 4)', isBundle: true, category: 'bundle' },
   premium_bundle: { price: 2400, is_active: true, name: 'Premium Bundle (pack of 4)', isBundle: true, category: 'bundle' },
 };
@@ -34,10 +37,13 @@ const DEFAULT_MENU_ITEMS = [
   { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: 580, category: 'classic' },
   { key: 'double_chocolate', name: 'Double Chocolate', price: 580, category: 'classic' },
   { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: 580, category: 'classic' },
+  { key: 'midnight_cookies_and_cream', name: 'Midnight Cookies and Cream', price: 580, category: 'classic' },
+  { key: 'peanut_butter_chocolate_chip', name: 'Peanut Butter Chocolate Chip', price: 580, category: 'classic' },
   { key: 'cookies_cream', name: 'Cookies & Cream', price: 620, category: 'premium' },
   { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: 620, category: 'premium' },
   { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: 620, category: 'premium' },
   { key: 'lotus_lava', name: 'Lotus Lava', price: 620, category: 'premium' },
+  { key: 'red_velvet_cream_cheese', name: 'Red Velvet Cream Cheese', price: 620, category: 'premium' },
   { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650, category: 'special' },
   { key: 'crumble_pot', name: 'Crumble Pot', price: 3500, category: 'special' },
 ];
@@ -46,6 +52,8 @@ const CLASSIC_FLAVORS = [
   'Classic Chocolate Chip',
   'Double Chocolate',
   'Chocolate Chip Walnut',
+  'Midnight Cookies and Cream',
+  'Peanut Butter Chocolate Chip',
 ];
 
 const PREMIUM_FLAVORS = [
@@ -53,6 +61,7 @@ const PREMIUM_FLAVORS = [
   'Kunafa Chocolate',
   'Hazelnut Filled',
   'Lotus Lava',
+  'Red Velvet Cream Cheese',
 ];
 
 export default function PreorderPage() {
@@ -1775,6 +1784,17 @@ export default function PreorderPage() {
                               breakdown = JSON.parse(breakdown);
                             } catch (e) {
                               breakdown = null;
+                            }
+                          }
+                          if ((!Array.isArray(breakdown) || breakdown.length === 0) && ord.delivery_landmark?.includes('[ITEMS]:')) {
+                            try {
+                              const jsonStr = ord.delivery_landmark.split('[ITEMS]:')[1];
+                              const parsed = JSON.parse(jsonStr);
+                              if (Array.isArray(parsed) && parsed.length > 0) {
+                                breakdown = parsed;
+                              }
+                            } catch (e) {
+                              // ignore
                             }
                           }
 
