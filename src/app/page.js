@@ -1800,8 +1800,6 @@ export default function PreorderPage() {
                               const match = nonStd.find((m) => Number(m.price) === diff);
                               if (match) {
                                 orderItems.push(`${match.name} × 1 (@ PKR ${Number(match.price).toLocaleString()})`);
-                              } else {
-                                orderItems.push(`Custom / Added Item × 1 (@ PKR ${diff.toLocaleString()})`);
                               }
                             }
                           }

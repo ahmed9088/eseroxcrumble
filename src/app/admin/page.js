@@ -1032,19 +1032,7 @@ export default function AdminPage() {
       list.push({ key: 'lotus_lava', name: 'Lotus Lava', qty: o.lotus_lava_qty, price: getPrice('lotus_lava', 620) });
     }
 
-    // Dynamic menu items if stored on order row
-    const standardKeys = ['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'];
-    menuItems.forEach((m) => {
-      if (!standardKeys.includes(m.key) && o[`${m.key}_qty`] > 0) {
-        list.push({
-          key: m.key,
-          name: m.name,
-          qty: o[`${m.key}_qty`],
-          price: getPrice(m.key, m.price || 600),
-        });
-      }
-    });
-
+    // Bundles
     if (o.classic_bundle_qty > 0) {
       list.push({ key: 'classic_bundle', name: 'Classic Bundle (pack of 4)', qty: o.classic_bundle_qty, price: getPrice('classic_bundle', 2200), customFlavours: o.classic_bundle_flavours });
     }
@@ -1052,18 +1040,53 @@ export default function AdminPage() {
       list.push({ key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', qty: o.premium_bundle_qty, price: getPrice('premium_bundle', 2400), customFlavours: o.premium_bundle_flavours });
     }
 
-    // 3. Discrepancy reconciliation for legacy orders where dynamic items weren't saved in columns:
+    // Dynamic menu items if stored on order row
+    const standardKeys = ['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'];
+    const nonStandardItems = menuItems.filter((m) => !standardKeys.includes(m.key));
+    const dynamicOnOrder = nonStandardItems.filter((m) => o[`${m.key}_qty`] > 0);
+
+    const standardSubtotal = list.reduce((acc, it) => acc + it.qty * it.price, 0);
     const recordedTotal = Math.round(Number(o.total_amount) || 0);
     const isDelivery = o.order_type === 'delivery';
     const deliveryFee = isDelivery ? 300 : 0;
     const expectedSubtotal = Math.max(0, recordedTotal - deliveryFee);
+    const remainingForDynamic = expectedSubtotal - standardSubtotal;
+
+    if (dynamicOnOrder.length === 1 && remainingForDynamic > 0) {
+      const dyn = dynamicOnOrder[0];
+      const qty = o[`${dyn.key}_qty`];
+      const impliedPrice = remainingForDynamic / qty;
+      const defaultP = getPrice(dyn.key, dyn.price || 600);
+      // If remaining balance divides evenly by quantity and is a reasonable price (e.g. 800 for Dot Cake Cookie), use it
+      const finalPrice = (Number.isInteger(impliedPrice) && impliedPrice > 0 && Math.abs(impliedPrice - defaultP) <= 400)
+        ? impliedPrice
+        : defaultP;
+      list.push({
+        key: dyn.key,
+        name: dyn.name,
+        qty,
+        price: finalPrice,
+        totalPrice: qty * finalPrice,
+      });
+    } else if (dynamicOnOrder.length > 0) {
+      dynamicOnOrder.forEach((m) => {
+        const p = getPrice(m.key, m.price || 600);
+        list.push({
+          key: m.key,
+          name: m.name,
+          qty: o[`${m.key}_qty`],
+          price: p,
+          totalPrice: o[`${m.key}_qty`] * p,
+        });
+      });
+    }
+
+    // 3. Discrepancy reconciliation for legacy orders where dynamic items weren't saved in columns (like Crumble Pot @ 3,500):
     const currentSubtotal = list.reduce((acc, it) => acc + it.qty * it.price, 0);
     let diff = expectedSubtotal - currentSubtotal;
 
     if (diff > 0) {
-      const nonStandardItems = menuItems.filter((m) => !standardKeys.includes(m.key));
-
-      // Exact price match (e.g. Crumble Pot @ 3,500)
+      // Exact price match in active menu items
       const exactMatch = nonStandardItems.find((m) => Number(m.price) === diff);
       if (exactMatch) {
         list.push({
@@ -1075,7 +1098,7 @@ export default function AdminPage() {
         });
         diff = 0;
       } else {
-        // Multi-quantity of single dynamic item match
+        // Multi-quantity match (e.g. 2 x Crumble Pot)
         const multiMatch = nonStandardItems.find((m) => Number(m.price) > 0 && diff % Number(m.price) === 0);
         if (multiMatch) {
           const qty = Math.floor(diff / Number(multiMatch.price));
@@ -1087,38 +1110,9 @@ export default function AdminPage() {
             totalPrice: qty * Number(multiMatch.price),
           });
           diff = 0;
-        } else {
-          // Greedy combination matching
-          const sortedDynamic = [...nonStandardItems]
-            .filter((m) => Number(m.price) > 0)
-            .sort((a, b) => Number(b.price) - Number(a.price));
-
-          for (const dynItem of sortedDynamic) {
-            const p = Number(dynItem.price);
-            if (diff >= p) {
-              const qty = Math.floor(diff / p);
-              list.push({
-                key: dynItem.key,
-                name: dynItem.name,
-                qty,
-                price: p,
-                totalPrice: qty * p,
-              });
-              diff -= qty * p;
-            }
-          }
-
-          if (diff > 0) {
-            list.push({
-              key: 'custom_item',
-              name: 'Additional Menu / Custom Item',
-              qty: 1,
-              price: diff,
-              totalPrice: diff,
-            });
-          }
         }
       }
+      // Never insert any fake "Additional Menu / Custom Item" placeholder
     }
 
     return list;
