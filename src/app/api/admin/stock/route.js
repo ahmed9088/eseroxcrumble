@@ -18,6 +18,8 @@ const defaultStockList = [
   { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', available: 100, initial: 100, price: 620, is_active: true, category: 'premium' },
   { key: 'hazelnut_filled', name: 'Hazelnut Filled', available: 150, initial: 150, price: 620, is_active: true, category: 'premium' },
   { key: 'lotus_lava', name: 'Lotus Lava', available: 100, initial: 100, price: 620, is_active: true, category: 'premium' },
+  { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', available: 100, initial: 100, price: 650, is_active: true, category: 'special' },
+  { key: 'crumble_pot', name: 'Crumble Pot', available: 50, initial: 50, price: 3500, is_active: true, category: 'special' },
 ];
 
 export async function GET() {
@@ -49,6 +51,31 @@ export async function GET() {
           category: item.category || (isClassic ? 'classic' : 'premium'),
         };
       });
+
+      // Ensure essential catalog items (Crumble Pot, Dot Cake Cookie) are always included
+      const existingKeys = new Set(items.map((i) => i.key));
+      if (!existingKeys.has('crumble_pot')) {
+        items.push({
+          key: 'crumble_pot',
+          name: 'Crumble Pot',
+          available: 50,
+          initial: 50,
+          price: 3500,
+          is_active: true,
+          category: 'special',
+        });
+      }
+      if (!existingKeys.has('dot_cake_cookie')) {
+        items.push({
+          key: 'dot_cake_cookie',
+          name: 'Dot Cake Cookie',
+          available: 100,
+          initial: 100,
+          price: 650,
+          is_active: true,
+          category: 'special',
+        });
+      }
     }
 
     // Fetch bundle configurations from settings if available

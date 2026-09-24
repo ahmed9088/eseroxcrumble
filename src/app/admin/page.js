@@ -3,6 +3,30 @@
 import { useState, useEffect, useRef } from 'react';
 import styles from './admin.module.css';
 
+const DEFAULT_MENU_ITEMS = [
+  { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: 580, category: 'classic' },
+  { key: 'double_chocolate', name: 'Double Chocolate', price: 580, category: 'classic' },
+  { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: 580, category: 'classic' },
+  { key: 'cookies_cream', name: 'Cookies & Cream', price: 620, category: 'premium' },
+  { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: 620, category: 'premium' },
+  { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: 620, category: 'premium' },
+  { key: 'lotus_lava', name: 'Lotus Lava', price: 620, category: 'premium' },
+  { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650, category: 'special' },
+  { key: 'crumble_pot', name: 'Crumble Pot', price: 3500, category: 'special' },
+];
+
+const DEFAULT_STOCK_MAP = {
+  classic_chocolate_chip: { price: 580, name: 'Classic Chocolate Chip', flavor_name: 'Classic Chocolate Chip' },
+  double_chocolate: { price: 580, name: 'Double Chocolate', flavor_name: 'Double Chocolate' },
+  chocolate_chip_walnut: { price: 580, name: 'Chocolate Chip Walnut', flavor_name: 'Chocolate Chip Walnut' },
+  cookies_cream: { price: 620, name: 'Cookies & Cream', flavor_name: 'Cookies & Cream' },
+  kunafa_chocolate: { price: 620, name: 'Kunafa Chocolate', flavor_name: 'Kunafa Chocolate' },
+  hazelnut_filled: { price: 620, name: 'Hazelnut Filled', flavor_name: 'Hazelnut Filled' },
+  lotus_lava: { price: 620, name: 'Lotus Lava', flavor_name: 'Lotus Lava' },
+  dot_cake_cookie: { price: 650, name: 'Dot Cake Cookie', flavor_name: 'Dot Cake Cookie' },
+  crumble_pot: { price: 3500, name: 'Crumble Pot', flavor_name: 'Crumble Pot' },
+};
+
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -31,8 +55,8 @@ export default function AdminPage() {
   });
 
   // Stock & Dynamic Menu Items State
-  const [stock, setStock] = useState({});
-  const [menuItems, setMenuItems] = useState([]);
+  const [stock, setStock] = useState(DEFAULT_STOCK_MAP);
+  const [menuItems, setMenuItems] = useState(DEFAULT_MENU_ITEMS);
   const [bundleSettings, setBundleSettings] = useState({
     classic_bundle: { price: 2200, is_active: true },
     premium_bundle: { price: 2400, is_active: true },
@@ -1007,6 +1031,8 @@ export default function AdminPage() {
       if (!isNaN(menuPrice) && menuPrice > 0) return menuPrice;
       if (key === 'classic_bundle') return Number(bundleSettings?.classic_bundle?.price) || defaultPrice;
       if (key === 'premium_bundle') return Number(bundleSettings?.premium_bundle?.price) || defaultPrice;
+      if (key === 'crumble_pot') return 3500;
+      if (key === 'dot_cake_cookie') return 650;
       return defaultPrice;
     };
 
@@ -1040,74 +1066,102 @@ export default function AdminPage() {
       list.push({ key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', qty: o.premium_bundle_qty, price: getPrice('premium_bundle', 2400), customFlavours: o.premium_bundle_flavours });
     }
 
-    // Dynamic menu items if stored on order row
-    const standardKeys = ['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'];
-    const nonStandardItems = menuItems.filter((m) => !standardKeys.includes(m.key));
-    const dynamicOnOrder = nonStandardItems.filter((m) => o[`${m.key}_qty`] > 0);
+    // Dynamic catalog of items
+    const standardKeys = [
+      'classic_chocolate_chip',
+      'double_chocolate',
+      'chocolate_chip_walnut',
+      'cookies_cream',
+      'kunafa_chocolate',
+      'hazelnut_filled',
+      'lotus_lava',
+      'classic_bundle',
+      'premium_bundle',
+    ];
 
-    const standardSubtotal = list.reduce((acc, it) => acc + it.qty * it.price, 0);
+    const dynamicCatalogMap = new Map();
+    // Default known dynamic items
+    dynamicCatalogMap.set('crumble_pot', { key: 'crumble_pot', name: 'Crumble Pot', price: 3500 });
+    dynamicCatalogMap.set('dot_cake_cookie', { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650 });
+
+    // Overlay from stock object
+    Object.entries(stock || {}).forEach(([k, s]) => {
+      if (!standardKeys.includes(k) && !k.endsWith('_bundle')) {
+        dynamicCatalogMap.set(k, {
+          key: k,
+          name: s.flavor_name || s.name || k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+          price: Number(s.price) || 600,
+        });
+      }
+    });
+
+    // Overlay from menuItems array
+    (menuItems || []).forEach((m) => {
+      if (!standardKeys.includes(m.key)) {
+        dynamicCatalogMap.set(m.key, {
+          key: m.key,
+          name: m.name || m.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+          price: Number(m.price) || 600,
+        });
+      }
+    });
+
+    const allDynamicItems = Array.from(dynamicCatalogMap.values());
+
+    // Check if the order row explicitly has quantity columns for any dynamic items
+    allDynamicItems.forEach((dyn) => {
+      const q = Number(o[`${dyn.key}_qty`]) || 0;
+      if (q > 0) {
+        const unitPrice = getPrice(dyn.key, dyn.price);
+        list.push({
+          key: dyn.key,
+          name: dyn.name,
+          qty: q,
+          price: unitPrice,
+          totalPrice: q * unitPrice,
+        });
+      }
+    });
+
+    // 3. Discrepancy reconciliation for legacy orders where dynamic items weren't saved in columns (like Crumble Pot @ 3,500)
+    const currentSubtotal = list.reduce((acc, it) => acc + (it.qty * it.price), 0);
     const recordedTotal = Math.round(Number(o.total_amount) || 0);
     const isDelivery = o.order_type === 'delivery';
     const deliveryFee = isDelivery ? 300 : 0;
     const expectedSubtotal = Math.max(0, recordedTotal - deliveryFee);
-    const remainingForDynamic = expectedSubtotal - standardSubtotal;
-
-    if (dynamicOnOrder.length === 1 && remainingForDynamic > 0) {
-      const dyn = dynamicOnOrder[0];
-      const qty = o[`${dyn.key}_qty`];
-      const impliedPrice = remainingForDynamic / qty;
-      const defaultP = getPrice(dyn.key, dyn.price || 600);
-      // If remaining balance divides evenly by quantity and is a reasonable price (e.g. 800 for Dot Cake Cookie), use it
-      const finalPrice = (Number.isInteger(impliedPrice) && impliedPrice > 0 && Math.abs(impliedPrice - defaultP) <= 400)
-        ? impliedPrice
-        : defaultP;
-      list.push({
-        key: dyn.key,
-        name: dyn.name,
-        qty,
-        price: finalPrice,
-        totalPrice: qty * finalPrice,
-      });
-    } else if (dynamicOnOrder.length > 0) {
-      dynamicOnOrder.forEach((m) => {
-        const p = getPrice(m.key, m.price || 600);
-        list.push({
-          key: m.key,
-          name: m.name,
-          qty: o[`${m.key}_qty`],
-          price: p,
-          totalPrice: o[`${m.key}_qty`] * p,
-        });
-      });
-    }
-
-    // 3. Discrepancy reconciliation for legacy orders where dynamic items weren't saved in columns (like Crumble Pot @ 3,500):
-    const currentSubtotal = list.reduce((acc, it) => acc + it.qty * it.price, 0);
     let diff = expectedSubtotal - currentSubtotal;
 
     if (diff > 0) {
-      // Exact price match in active menu items
-      const exactMatch = nonStandardItems.find((m) => Number(m.price) === diff);
+      // Dynamic items not yet in list
+      const itemsNotInList = allDynamicItems.filter((d) => !list.some((it) => it.key === d.key));
+
+      // 1. Exact price match with a known dynamic item (e.g. Crumble Pot @ 3,500)
+      const exactMatch = itemsNotInList.find((m) => getPrice(m.key, m.price) === diff);
       if (exactMatch) {
+        const p = getPrice(exactMatch.key, exactMatch.price);
         list.push({
           key: exactMatch.key,
           name: exactMatch.name,
           qty: 1,
-          price: Number(exactMatch.price),
-          totalPrice: Number(exactMatch.price),
+          price: p,
+          totalPrice: p,
         });
         diff = 0;
       } else {
-        // Multi-quantity match (e.g. 2 x Crumble Pot)
-        const multiMatch = nonStandardItems.find((m) => Number(m.price) > 0 && diff % Number(m.price) === 0);
+        // 2. Multi-quantity match (e.g. 2 x Crumble Pot @ 3,500 = 7,000)
+        const multiMatch = itemsNotInList.find((m) => {
+          const p = getPrice(m.key, m.price);
+          return p > 0 && diff % p === 0;
+        });
         if (multiMatch) {
-          const qty = Math.floor(diff / Number(multiMatch.price));
+          const p = getPrice(multiMatch.key, multiMatch.price);
+          const qty = Math.floor(diff / p);
           list.push({
             key: multiMatch.key,
             name: multiMatch.name,
             qty,
-            price: Number(multiMatch.price),
-            totalPrice: qty * Number(multiMatch.price),
+            price: p,
+            totalPrice: qty * p,
           });
           diff = 0;
         }

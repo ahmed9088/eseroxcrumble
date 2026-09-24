@@ -24,9 +24,23 @@ const DEFAULT_STOCK_STATUS = {
   kunafa_chocolate: { price: 620, available: 100, is_active: true, name: 'Kunafa Chocolate', category: 'premium' },
   hazelnut_filled: { price: 620, available: 150, is_active: true, name: 'Hazelnut Filled', category: 'premium' },
   lotus_lava: { price: 620, available: 100, is_active: true, name: 'Lotus Lava', category: 'premium' },
+  dot_cake_cookie: { price: 650, available: 100, is_active: true, name: 'Dot Cake Cookie', category: 'special' },
+  crumble_pot: { price: 3500, available: 50, is_active: true, name: 'Crumble Pot', category: 'special' },
   classic_bundle: { price: 2200, is_active: true, name: 'Classic Bundle (pack of 4)', isBundle: true, category: 'bundle' },
   premium_bundle: { price: 2400, is_active: true, name: 'Premium Bundle (pack of 4)', isBundle: true, category: 'bundle' },
 };
+
+const DEFAULT_MENU_ITEMS = [
+  { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: 580, category: 'classic' },
+  { key: 'double_chocolate', name: 'Double Chocolate', price: 580, category: 'classic' },
+  { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: 580, category: 'classic' },
+  { key: 'cookies_cream', name: 'Cookies & Cream', price: 620, category: 'premium' },
+  { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: 620, category: 'premium' },
+  { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: 620, category: 'premium' },
+  { key: 'lotus_lava', name: 'Lotus Lava', price: 620, category: 'premium' },
+  { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650, category: 'special' },
+  { key: 'crumble_pot', name: 'Crumble Pot', price: 3500, category: 'special' },
+];
 
 const CLASSIC_FLAVORS = [
   'Classic Chocolate Chip',
@@ -105,7 +119,7 @@ export default function PreorderPage() {
   const [copiedField, setCopiedField] = useState('');
   const [announcement, setAnnouncement] = useState({ text: '', isActive: false });
   const [orderSettings, setOrderSettings] = useState({ isDeliveryEnabled: true, isPickupEnabled: true });
-  const [menuItems, setMenuItems] = useState([]);
+  const [menuItems, setMenuItems] = useState(DEFAULT_MENU_ITEMS);
   const [activeBatchName, setActiveBatchName] = useState('Pre-Order 1');
 
   // Fetch Stock Status, Menu Items, Batches, and Announcement on Mount
@@ -1780,7 +1794,38 @@ export default function PreorderPage() {
                             if (ord.classic_bundle_qty > 0) orderItems.push(`Classic Bundle × ${ord.classic_bundle_qty}`);
                             if (ord.premium_bundle_qty > 0) orderItems.push(`Premium Bundle × ${ord.premium_bundle_qty}`);
 
+                            // Dynamic items catalog
+                            const dynMap = new Map();
+                            dynMap.set('crumble_pot', { key: 'crumble_pot', name: 'Crumble Pot', price: 3500 });
+                            dynMap.set('dot_cake_cookie', { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650 });
+                            (menuItems || []).forEach((m) => {
+                              if (!['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(m.key)) {
+                                dynMap.set(m.key, { key: m.key, name: m.name, price: Number(m.price) || 600 });
+                              }
+                            });
+                            Object.entries(stockStatus || {}).forEach(([k, s]) => {
+                              if (!['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(k) && !k.endsWith('_bundle')) {
+                                dynMap.set(k, { key: k, name: s.flavor_name || s.name || k, price: Number(s.price) || 600 });
+                              }
+                            });
+
+                            const addedKeys = new Set();
+                            dynMap.forEach((dyn) => {
+                              const q = Number(ord[`${dyn.key}_qty`]) || 0;
+                              if (q > 0) {
+                                orderItems.push(`${dyn.name} × ${q} (@ PKR ${dyn.price.toLocaleString()})`);
+                                addedKeys.add(dyn.key);
+                              }
+                            });
+
                             // Reconcile dynamic items for legacy orders if total exceeds standard items sum
+                            let dynSum = 0;
+                            addedKeys.forEach((k) => {
+                              const q = Number(ord[`${k}_qty`]) || 0;
+                              const p = dynMap.get(k)?.price || 0;
+                              dynSum += q * p;
+                            });
+
                             const standardSum =
                               (ord.classic_chocolate_chip_qty || 0) * 580 +
                               (ord.double_chocolate_qty || 0) * 580 +
@@ -1790,16 +1835,24 @@ export default function PreorderPage() {
                               (ord.hazelnut_filled_qty || 0) * 620 +
                               (ord.lotus_lava_qty || 0) * 620 +
                               (ord.classic_bundle_qty || 0) * 2200 +
-                              (ord.premium_bundle_qty || 0) * 2400;
+                              (ord.premium_bundle_qty || 0) * 2400 +
+                              dynSum;
+
                             const isDel = ord.order_type === 'delivery';
                             const fee = isDel ? 300 : 0;
                             const expSub = Math.max(0, (parseFloat(ord.total_amount) || 0) - fee);
                             const diff = expSub - standardSum;
                             if (diff > 0) {
-                              const nonStd = menuItems.filter((m) => !['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(m.key));
-                              const match = nonStd.find((m) => Number(m.price) === diff);
-                              if (match) {
-                                orderItems.push(`${match.name} × 1 (@ PKR ${Number(match.price).toLocaleString()})`);
+                              const notAdded = Array.from(dynMap.values()).filter((d) => !addedKeys.has(d.key));
+                              const exactMatch = notAdded.find((m) => m.price === diff);
+                              if (exactMatch) {
+                                orderItems.push(`${exactMatch.name} × 1 (@ PKR ${exactMatch.price.toLocaleString()})`);
+                              } else {
+                                const multiMatch = notAdded.find((m) => m.price > 0 && diff % m.price === 0);
+                                if (multiMatch) {
+                                  const q = Math.floor(diff / multiMatch.price);
+                                  orderItems.push(`${multiMatch.name} × ${q} (@ PKR ${multiMatch.price.toLocaleString()})`);
+                                }
                               }
                             }
                           }

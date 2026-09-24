@@ -20,7 +20,9 @@ values
   ('cookies_cream', 'Cookies & Cream', 620, 150, 146, true),
   ('kunafa_chocolate', 'Kunafa Chocolate', 620, 100, 94, true),
   ('hazelnut_filled', 'Hazelnut Filled', 620, 150, 144, true),
-  ('lotus_lava', 'Lotus Lava', 620, 100, 96, true)
+  ('lotus_lava', 'Lotus Lava', 620, 100, 96, true),
+  ('dot_cake_cookie', 'Dot Cake Cookie', 650, 100, 97, true),
+  ('crumble_pot', 'Crumble Pot', 3500, 50, 49, true)
 on conflict (flavor_key) do update set
   price = excluded.price,
   initial_stock = excluded.initial_stock,

@@ -65,3 +65,10 @@ begin
   end if;
 end $$;
 
+-- 5. Ensure special catalog items (Crumble Pot, Dot Cake Cookie) exist in cookie_stock
+insert into public.cookie_stock (flavor_key, flavor_name, price, initial_stock, available_stock, is_active, category)
+values
+  ('dot_cake_cookie', 'Dot Cake Cookie', 650, 100, 97, true, 'special'),
+  ('crumble_pot', 'Crumble Pot', 3500, 50, 49, true, 'special')
+on conflict (flavor_key) do nothing;
+
