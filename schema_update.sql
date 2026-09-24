@@ -88,3 +88,23 @@ on conflict (flavor_key) do update set
   category = excluded.category,
   is_active = excluded.is_active;
 
+-- 6. Add dedicated quantity columns on orders table for dynamic menu items (for full database clarity)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'orders' and column_name = 'midnight_cookies_and_cream_qty') then
+    alter table public.orders add column midnight_cookies_and_cream_qty integer default 0;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'orders' and column_name = 'peanut_butter_chocolate_chip_qty') then
+    alter table public.orders add column peanut_butter_chocolate_chip_qty integer default 0;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'orders' and column_name = 'red_velvet_cream_cheese_qty') then
+    alter table public.orders add column red_velvet_cream_cheese_qty integer default 0;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'orders' and column_name = 'dot_cake_cookie_qty') then
+    alter table public.orders add column dot_cake_cookie_qty integer default 0;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'orders' and column_name = 'crumble_pot_qty') then
+    alter table public.orders add column crumble_pot_qty integer default 0;
+  end if;
+end $$;
+

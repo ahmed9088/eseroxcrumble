@@ -1003,7 +1003,59 @@ export default function AdminPage() {
   const getOrderItemsList = (o) => {
     if (!o) return [];
 
-    // 1. If the order has items_breakdown stored, parse and return it directly
+    // Master Catalog of ALL 12 live menu items + bundles
+    const defaultCatalog = [
+      { key: 'crumble_pot', name: 'Crumble Pot', price: 3500, category: 'special' },
+      { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650, category: 'special' },
+      { key: 'red_velvet_cream_cheese', name: 'Red Velvet Cream Cheese', price: 620, category: 'premium' },
+      { key: 'cookies_cream', name: 'Cookies & Cream', price: 620, category: 'premium' },
+      { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: 620, category: 'premium' },
+      { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: 620, category: 'premium' },
+      { key: 'lotus_lava', name: 'Lotus Lava', price: 620, category: 'premium' },
+      { key: 'midnight_cookies_and_cream', name: 'Midnight Cookies and Cream', price: 580, category: 'classic' },
+      { key: 'peanut_butter_chocolate_chip', name: 'Peanut Butter Chocolate Chip', price: 580, category: 'classic' },
+      { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: 580, category: 'classic' },
+      { key: 'double_chocolate', name: 'Double Chocolate', price: 580, category: 'classic' },
+      { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: 580, category: 'classic' },
+      { key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', price: 2400, category: 'bundle' },
+      { key: 'classic_bundle', name: 'Classic Bundle (pack of 4)', price: 2200, category: 'bundle' },
+    ];
+
+    const catalogMap = new Map();
+    defaultCatalog.forEach((it) => catalogMap.set(it.key, { ...it }));
+
+    // Overlay prices and names from live menuItems and stock
+    (menuItems || []).forEach((m) => {
+      const existing = catalogMap.get(m.key);
+      const price = Number(m.price) || existing?.price || 580;
+      catalogMap.set(m.key, {
+        key: m.key,
+        name: m.name || existing?.name || m.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        price,
+        category: m.category || existing?.category || 'classic',
+      });
+    });
+
+    Object.entries(stock || {}).forEach(([k, s]) => {
+      const existing = catalogMap.get(k);
+      const price = Number(s.price) || existing?.price || 580;
+      catalogMap.set(k, {
+        key: k,
+        name: s.flavor_name || s.name || existing?.name || k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        price,
+        category: s.category || existing?.category || 'classic',
+      });
+    });
+
+    const getPrice = (key, defaultPrice) => {
+      const found = catalogMap.get(key);
+      if (found && !isNaN(Number(found.price)) && Number(found.price) > 0) return Number(found.price);
+      return defaultPrice;
+    };
+
+    let list = [];
+
+    // 1. Check if the order has items_breakdown stored
     let breakdown = o.items_breakdown;
     if (typeof breakdown === 'string') {
       try {
@@ -1024,124 +1076,76 @@ export default function AdminPage() {
         // ignore
       }
     }
+
     if (Array.isArray(breakdown) && breakdown.length > 0) {
-      return breakdown.map((item) => {
-        const qty = item.qty || 1;
-        const price = Number(item.unitPrice || item.price || 0);
-        return {
-          key: item.key,
-          name: item.name || item.key?.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-          qty,
-          price,
-          totalPrice: Number(item.totalPrice || (qty * price)),
-          customFlavours: item.customFlavours,
-        };
+      list = breakdown
+        .filter((item) => (Number(item.qty) || 0) > 0)
+        .map((item) => {
+          const qty = Number(item.qty) || 1;
+          const price = Number(item.unitPrice || item.price || getPrice(item.key, 0));
+          return {
+            key: item.key,
+            name: item.name || catalogMap.get(item.key)?.name || item.key?.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+            qty,
+            price,
+            totalPrice: Number(item.totalPrice || qty * price),
+            customFlavours: item.customFlavours,
+          };
+        });
+    }
+
+    // 2. If list is still empty, build from individual database columns (legacy orders)
+    if (list.length === 0) {
+      if (o.classic_chocolate_chip_qty > 0) {
+        list.push({ key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', qty: o.classic_chocolate_chip_qty, price: getPrice('classic_chocolate_chip', 580) });
+      }
+      if (o.double_chocolate_qty > 0) {
+        list.push({ key: 'double_chocolate', name: 'Double Chocolate', qty: o.double_chocolate_qty, price: getPrice('double_chocolate', 580) });
+      }
+      if (o.chocolate_chip_walnut_qty > 0) {
+        list.push({ key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', qty: o.chocolate_chip_walnut_qty, price: getPrice('chocolate_chip_walnut', 580) });
+      }
+      if (o.cookies_cream_qty > 0) {
+        list.push({ key: 'cookies_cream', name: 'Cookies & Cream', qty: o.cookies_cream_qty, price: getPrice('cookies_cream', 620) });
+      }
+      if (o.kunafa_chocolate_qty > 0) {
+        list.push({ key: 'kunafa_chocolate', name: 'Kunafa Chocolate', qty: o.kunafa_chocolate_qty, price: getPrice('kunafa_chocolate', 620) });
+      }
+      if (o.hazelnut_filled_qty > 0) {
+        list.push({ key: 'hazelnut_filled', name: 'Hazelnut Filled', qty: o.hazelnut_filled_qty, price: getPrice('hazelnut_filled', 620) });
+      }
+      if (o.lotus_lava_qty > 0) {
+        list.push({ key: 'lotus_lava', name: 'Lotus Lava', qty: o.lotus_lava_qty, price: getPrice('lotus_lava', 620) });
+      }
+
+      // Bundles
+      if (o.classic_bundle_qty > 0) {
+        list.push({ key: 'classic_bundle', name: 'Classic Bundle (pack of 4)', qty: o.classic_bundle_qty, price: getPrice('classic_bundle', 2200), customFlavours: o.classic_bundle_flavours });
+      }
+      if (o.premium_bundle_qty > 0) {
+        list.push({ key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', qty: o.premium_bundle_qty, price: getPrice('premium_bundle', 2400), customFlavours: o.premium_bundle_flavours });
+      }
+
+      // Check any dynamic items columns on order object (e.g. if columns exist)
+      catalogMap.forEach((dyn) => {
+        if (!list.some((it) => it.key === dyn.key)) {
+          const q = Number(o[`${dyn.key}_qty`]) || Number(o[dyn.key]) || 0;
+          if (q > 0) {
+            const unitPrice = getPrice(dyn.key, dyn.price);
+            list.push({
+              key: dyn.key,
+              name: dyn.name,
+              qty: q,
+              price: unitPrice,
+              totalPrice: q * unitPrice,
+            });
+          }
+        }
       });
     }
 
-    // 2. Otherwise build from individual columns (legacy orders)
-    const list = [];
-    const getPrice = (key, defaultPrice) => {
-      const stockPrice = Number(stock[key]?.price);
-      if (!isNaN(stockPrice) && stockPrice > 0) return stockPrice;
-      const foundMenuItem = menuItems.find((m) => m.key === key);
-      const menuPrice = Number(foundMenuItem?.price);
-      if (!isNaN(menuPrice) && menuPrice > 0) return menuPrice;
-      if (key === 'classic_bundle') return Number(bundleSettings?.classic_bundle?.price) || defaultPrice;
-      if (key === 'premium_bundle') return Number(bundleSettings?.premium_bundle?.price) || defaultPrice;
-      if (key === 'crumble_pot') return 3500;
-      if (key === 'dot_cake_cookie') return 650;
-      return defaultPrice;
-    };
-
-    if (o.classic_chocolate_chip_qty > 0) {
-      list.push({ key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', qty: o.classic_chocolate_chip_qty, price: getPrice('classic_chocolate_chip', 580) });
-    }
-    if (o.double_chocolate_qty > 0) {
-      list.push({ key: 'double_chocolate', name: 'Double Chocolate', qty: o.double_chocolate_qty, price: getPrice('double_chocolate', 580) });
-    }
-    if (o.chocolate_chip_walnut_qty > 0) {
-      list.push({ key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', qty: o.chocolate_chip_walnut_qty, price: getPrice('chocolate_chip_walnut', 580) });
-    }
-    if (o.cookies_cream_qty > 0) {
-      list.push({ key: 'cookies_cream', name: 'Cookies & Cream', qty: o.cookies_cream_qty, price: getPrice('cookies_cream', 620) });
-    }
-    if (o.kunafa_chocolate_qty > 0) {
-      list.push({ key: 'kunafa_chocolate', name: 'Kunafa Chocolate', qty: o.kunafa_chocolate_qty, price: getPrice('kunafa_chocolate', 620) });
-    }
-    if (o.hazelnut_filled_qty > 0) {
-      list.push({ key: 'hazelnut_filled', name: 'Hazelnut Filled', qty: o.hazelnut_filled_qty, price: getPrice('hazelnut_filled', 620) });
-    }
-    if (o.lotus_lava_qty > 0) {
-      list.push({ key: 'lotus_lava', name: 'Lotus Lava', qty: o.lotus_lava_qty, price: getPrice('lotus_lava', 620) });
-    }
-
-    // Bundles
-    if (o.classic_bundle_qty > 0) {
-      list.push({ key: 'classic_bundle', name: 'Classic Bundle (pack of 4)', qty: o.classic_bundle_qty, price: getPrice('classic_bundle', 2200), customFlavours: o.classic_bundle_flavours });
-    }
-    if (o.premium_bundle_qty > 0) {
-      list.push({ key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', qty: o.premium_bundle_qty, price: getPrice('premium_bundle', 2400), customFlavours: o.premium_bundle_flavours });
-    }
-
-    // Dynamic catalog of items
-    const standardKeys = [
-      'classic_chocolate_chip',
-      'double_chocolate',
-      'chocolate_chip_walnut',
-      'cookies_cream',
-      'kunafa_chocolate',
-      'hazelnut_filled',
-      'lotus_lava',
-      'classic_bundle',
-      'premium_bundle',
-    ];
-
-    const dynamicCatalogMap = new Map();
-    // Default known dynamic items
-    dynamicCatalogMap.set('crumble_pot', { key: 'crumble_pot', name: 'Crumble Pot', price: 3500 });
-    dynamicCatalogMap.set('dot_cake_cookie', { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650 });
-
-    // Overlay from stock object
-    Object.entries(stock || {}).forEach(([k, s]) => {
-      if (!standardKeys.includes(k) && !k.endsWith('_bundle')) {
-        dynamicCatalogMap.set(k, {
-          key: k,
-          name: s.flavor_name || s.name || k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-          price: Number(s.price) || 600,
-        });
-      }
-    });
-
-    // Overlay from menuItems array
-    (menuItems || []).forEach((m) => {
-      if (!standardKeys.includes(m.key)) {
-        dynamicCatalogMap.set(m.key, {
-          key: m.key,
-          name: m.name || m.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-          price: Number(m.price) || 600,
-        });
-      }
-    });
-
-    const allDynamicItems = Array.from(dynamicCatalogMap.values());
-
-    // Check if the order row explicitly has quantity columns for any dynamic items
-    allDynamicItems.forEach((dyn) => {
-      const q = Number(o[`${dyn.key}_qty`]) || 0;
-      if (q > 0) {
-        const unitPrice = getPrice(dyn.key, dyn.price);
-        list.push({
-          key: dyn.key,
-          name: dyn.name,
-          qty: q,
-          price: unitPrice,
-          totalPrice: q * unitPrice,
-        });
-      }
-    });
-
-    // 3. Discrepancy reconciliation for legacy orders where dynamic items weren't saved in columns (like Crumble Pot @ 3,500)
+    // 3. Smart Discrepancy Reconciliation
+    // Decomposes any single or multi-item dynamic combination (e.g. Crumble Pot + Cookies)
     const currentSubtotal = list.reduce((acc, it) => acc + (it.qty * it.price), 0);
     const recordedTotal = Math.round(Number(o.total_amount) || 0);
     const isDelivery = o.order_type === 'delivery';
@@ -1150,41 +1154,105 @@ export default function AdminPage() {
     let diff = expectedSubtotal - currentSubtotal;
 
     if (diff > 0) {
-      // Dynamic items not yet in list
-      const itemsNotInList = allDynamicItems.filter((d) => !list.some((it) => it.key === d.key));
+      // Find candidate items from the live catalog
+      const landmarkText = (o.delivery_landmark || '').toLowerCase();
+      const flavoursText = `${o.classic_bundle_flavours || ''} ${o.premium_bundle_flavours || ''}`.toLowerCase();
+      const notesText = `${landmarkText} ${flavoursText}`;
 
-      // 1. Exact price match with a known dynamic item (e.g. Crumble Pot @ 3,500)
-      const exactMatch = itemsNotInList.find((m) => getPrice(m.key, m.price) === diff);
-      if (exactMatch) {
-        const p = getPrice(exactMatch.key, exactMatch.price);
-        list.push({
-          key: exactMatch.key,
-          name: exactMatch.name,
-          qty: 1,
-          price: p,
-          totalPrice: p,
+      // Score candidates to prioritize items mentioned in notes and dynamic items without dedicated columns
+      const allCandidates = Array.from(catalogMap.values())
+        .filter((c) => c.price > 0 && c.price <= diff)
+        .map((c) => {
+          let score = 0;
+          const words = c.name.toLowerCase().split(/\s+/);
+          if (words.some((w) => w.length > 2 && notesText.includes(w))) {
+            score += 100;
+          }
+          const isStandardCol = [
+            'classic_chocolate_chip',
+            'double_chocolate',
+            'chocolate_chip_walnut',
+            'cookies_cream',
+            'kunafa_chocolate',
+            'hazelnut_filled',
+            'lotus_lava',
+          ].includes(c.key);
+          if (!isStandardCol) score += 50;
+          if (!list.some((it) => it.key === c.key)) score += 20;
+          return { ...c, score };
         });
-        diff = 0;
-      } else {
-        // 2. Multi-quantity match (e.g. 2 x Crumble Pot @ 3,500 = 7,000)
-        const multiMatch = itemsNotInList.find((m) => {
-          const p = getPrice(m.key, m.price);
-          return p > 0 && diff % p === 0;
-        });
-        if (multiMatch) {
-          const p = getPrice(multiMatch.key, multiMatch.price);
-          const qty = Math.floor(diff / p);
-          list.push({
-            key: multiMatch.key,
-            name: multiMatch.name,
-            qty,
-            price: p,
-            totalPrice: qty * p,
-          });
-          diff = 0;
+
+      allCandidates.sort((a, b) => b.score - a.score || b.price - a.price);
+
+      // Exact subset-sum solver for combinations
+      const solveCombination = (target, candidates) => {
+        let best = null;
+        const dfs = (idx, remaining, currentCounts) => {
+          if (remaining === 0) {
+            best = { ...currentCounts };
+            return true;
+          }
+          if (idx >= candidates.length || remaining < 0) return false;
+
+          const cand = candidates[idx];
+          const maxCanTake = Math.min(20, Math.floor(remaining / cand.price));
+
+          for (let count = maxCanTake; count >= 0; count--) {
+            if (count > 0) currentCounts[cand.key] = count;
+            else delete currentCounts[cand.key];
+
+            if (dfs(idx + 1, remaining - count * cand.price, currentCounts)) {
+              return true;
+            }
+          }
+          delete currentCounts[cand.key];
+          return false;
+        };
+
+        if (dfs(0, target, {})) {
+          return best;
+        }
+        return null;
+      };
+
+      let solution = solveCombination(diff, allCandidates);
+
+      // If diff with standard delivery fee didn't solve, test if order had zero delivery fee (promo/takeaway)
+      if (!solution && isDelivery) {
+        const altDiff = recordedTotal - currentSubtotal;
+        if (altDiff > 0 && altDiff !== diff) {
+          const altCandidates = Array.from(catalogMap.values())
+            .filter((c) => c.price > 0 && c.price <= altDiff)
+            .map((c) => ({ ...c, score: 0 }));
+          altCandidates.sort((a, b) => b.price - a.price);
+          const altSolution = solveCombination(altDiff, altCandidates);
+          if (altSolution) {
+            solution = altSolution;
+            diff = altDiff;
+          }
         }
       }
-      // Never insert any fake "Additional Menu / Custom Item" placeholder
+
+      if (solution) {
+        Object.entries(solution).forEach(([key, qty]) => {
+          if (qty > 0) {
+            const cand = catalogMap.get(key);
+            const existingItem = list.find((it) => it.key === key);
+            if (existingItem) {
+              existingItem.qty += qty;
+              existingItem.totalPrice = existingItem.qty * existingItem.price;
+            } else {
+              list.push({
+                key,
+                name: cand?.name || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+                qty,
+                price: cand?.price || 580,
+                totalPrice: qty * (cand?.price || 580),
+              });
+            }
+          }
+        });
+      }
     }
 
     return list;

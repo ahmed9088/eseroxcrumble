@@ -213,7 +213,17 @@ export async function PUT(request) {
 
     // If batch_name or items_breakdown column doesn't exist yet, retry gracefully
     if (updateError && (updateError.message?.includes('batch_name') || updateError.message?.includes('items_breakdown'))) {
-      if (updateError.message?.includes('items_breakdown')) delete updates.items_breakdown;
+      if (updateError.message?.includes('items_breakdown')) {
+        delete updates.items_breakdown;
+        const targetBreakdown = itemsBreakdown !== undefined ? itemsBreakdown : items_breakdown;
+        if (targetBreakdown) {
+          const landmark = updates.delivery_landmark !== undefined ? updates.delivery_landmark : order.delivery_landmark;
+          const cleanLandmark = landmark ? landmark.replace(/\s*\[ITEMS\]:.*$/, '') : '';
+          updates.delivery_landmark = cleanLandmark 
+            ? `${cleanLandmark} [ITEMS]:${JSON.stringify(targetBreakdown)}`
+            : `[ITEMS]:${JSON.stringify(targetBreakdown)}`;
+        }
+      }
       if (updateError.message?.includes('batch_name')) delete updates.batch_name;
       const retry = await supabaseAdmin
         .from('orders')
@@ -648,9 +658,17 @@ export async function POST(request) {
       let insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: batchName }).select('id').single();
       if (insRes.error && insRes.error.message?.includes('items_breakdown')) {
         delete orderData.items_breakdown;
-        insRes = await supabaseAdmin.from('orders').insert({ ...orderData, batch_name: batchName }).select('id').single();
-      }
-      if (insRes.error && insRes.error.message?.includes('batch_name')) {
+        const backupData = {
+          ...orderData,
+          delivery_landmark: orderData.delivery_landmark
+            ? `${orderData.delivery_landmark} [ITEMS]:${JSON.stringify(itemsBreakdown)}`
+            : `[ITEMS]:${JSON.stringify(itemsBreakdown)}`,
+        };
+        insRes = await supabaseAdmin.from('orders').insert({ ...backupData, batch_name: batchName }).select('id').single();
+        if (insRes.error && insRes.error.message?.includes('batch_name')) {
+          insRes = await supabaseAdmin.from('orders').insert(backupData).select('id').single();
+        }
+      } else if (insRes.error && insRes.error.message?.includes('batch_name')) {
         insRes = await supabaseAdmin.from('orders').insert(orderData).select('id').single();
       }
 

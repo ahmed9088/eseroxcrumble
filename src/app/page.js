@@ -1798,84 +1798,130 @@ export default function PreorderPage() {
                             }
                           }
 
+                          const catalog = [
+                            { key: 'crumble_pot', name: 'Crumble Pot', price: 3500 },
+                            { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650 },
+                            { key: 'red_velvet_cream_cheese', name: 'Red Velvet Cream Cheese', price: 620 },
+                            { key: 'cookies_cream', name: 'Cookies & Cream', price: 620 },
+                            { key: 'kunafa_chocolate', name: 'Kunafa Chocolate', price: 620 },
+                            { key: 'hazelnut_filled', name: 'Hazelnut Filled', price: 620 },
+                            { key: 'lotus_lava', name: 'Lotus Lava', price: 620 },
+                            { key: 'midnight_cookies_and_cream', name: 'Midnight Cookies and Cream', price: 580 },
+                            { key: 'peanut_butter_chocolate_chip', name: 'Peanut Butter Chocolate Chip', price: 580 },
+                            { key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', price: 580 },
+                            { key: 'double_chocolate', name: 'Double Chocolate', price: 580 },
+                            { key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', price: 580 },
+                            { key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', price: 2400 },
+                            { key: 'classic_bundle', name: 'Classic Bundle (pack of 4)', price: 2200 },
+                          ];
+                          const catMap = new Map();
+                          catalog.forEach((c) => catMap.set(c.key, { ...c }));
+                          (menuItems || []).forEach((m) => {
+                            const ex = catMap.get(m.key);
+                            catMap.set(m.key, { key: m.key, name: m.name || ex?.name || m.key, price: Number(m.price) || ex?.price || 580 });
+                          });
+                          Object.entries(stockStatus || {}).forEach(([k, s]) => {
+                            const ex = catMap.get(k);
+                            catMap.set(k, { key: k, name: s.flavor_name || s.name || ex?.name || k, price: Number(s.price) || ex?.price || 580 });
+                          });
+
+                          const parsedList = [];
                           if (Array.isArray(breakdown) && breakdown.length > 0) {
-                            breakdown.forEach((it) => {
-                              const p = Number(it.unitPrice || it.price || 0);
-                              orderItems.push(`${it.name || it.key} × ${it.qty || 1}${p > 0 ? ` (@ PKR ${p.toLocaleString()})` : ''}`);
+                            breakdown.filter((it) => (Number(it.qty) || 0) > 0).forEach((it) => {
+                              const p = Number(it.unitPrice || it.price || catMap.get(it.key)?.price || 0);
+                              parsedList.push({
+                                key: it.key,
+                                name: it.name || catMap.get(it.key)?.name || it.key,
+                                qty: Number(it.qty) || 1,
+                                price: p,
+                              });
                             });
-                          } else {
-                            if (ord.classic_chocolate_chip_qty > 0) orderItems.push(`Classic Chocolate Chip × ${ord.classic_chocolate_chip_qty}`);
-                            if (ord.double_chocolate_qty > 0) orderItems.push(`Double Chocolate × ${ord.double_chocolate_qty}`);
-                            if (ord.chocolate_chip_walnut_qty > 0) orderItems.push(`Chocolate Chip Walnut × ${ord.chocolate_chip_walnut_qty}`);
-                            if (ord.cookies_cream_qty > 0) orderItems.push(`Cookies & Cream × ${ord.cookies_cream_qty}`);
-                            if (ord.kunafa_chocolate_qty > 0) orderItems.push(`Kunafa Chocolate × ${ord.kunafa_chocolate_qty}`);
-                            if (ord.hazelnut_filled_qty > 0) orderItems.push(`Hazelnut Filled × ${ord.hazelnut_filled_qty}`);
-                            if (ord.lotus_lava_qty > 0) orderItems.push(`Lotus Lava × ${ord.lotus_lava_qty}`);
-                            if (ord.classic_bundle_qty > 0) orderItems.push(`Classic Bundle × ${ord.classic_bundle_qty}`);
-                            if (ord.premium_bundle_qty > 0) orderItems.push(`Premium Bundle × ${ord.premium_bundle_qty}`);
+                          }
 
-                            // Dynamic items catalog
-                            const dynMap = new Map();
-                            dynMap.set('crumble_pot', { key: 'crumble_pot', name: 'Crumble Pot', price: 3500 });
-                            dynMap.set('dot_cake_cookie', { key: 'dot_cake_cookie', name: 'Dot Cake Cookie', price: 650 });
-                            (menuItems || []).forEach((m) => {
-                              if (!['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(m.key)) {
-                                dynMap.set(m.key, { key: m.key, name: m.name, price: Number(m.price) || 600 });
+                          if (parsedList.length === 0) {
+                            if (ord.classic_chocolate_chip_qty > 0) parsedList.push({ key: 'classic_chocolate_chip', name: 'Classic Chocolate Chip', qty: ord.classic_chocolate_chip_qty, price: 580 });
+                            if (ord.double_chocolate_qty > 0) parsedList.push({ key: 'double_chocolate', name: 'Double Chocolate', qty: ord.double_chocolate_qty, price: 580 });
+                            if (ord.chocolate_chip_walnut_qty > 0) parsedList.push({ key: 'chocolate_chip_walnut', name: 'Chocolate Chip Walnut', qty: ord.chocolate_chip_walnut_qty, price: 580 });
+                            if (ord.cookies_cream_qty > 0) parsedList.push({ key: 'cookies_cream', name: 'Cookies & Cream', qty: ord.cookies_cream_qty, price: 620 });
+                            if (ord.kunafa_chocolate_qty > 0) parsedList.push({ key: 'kunafa_chocolate', name: 'Kunafa Chocolate', qty: ord.kunafa_chocolate_qty, price: 620 });
+                            if (ord.hazelnut_filled_qty > 0) parsedList.push({ key: 'hazelnut_filled', name: 'Hazelnut Filled', qty: ord.hazelnut_filled_qty, price: 620 });
+                            if (ord.lotus_lava_qty > 0) parsedList.push({ key: 'lotus_lava', name: 'Lotus Lava', qty: ord.lotus_lava_qty, price: 620 });
+                            if (ord.classic_bundle_qty > 0) parsedList.push({ key: 'classic_bundle', name: 'Classic Bundle (pack of 4)', qty: ord.classic_bundle_qty, price: 2200 });
+                            if (ord.premium_bundle_qty > 0) parsedList.push({ key: 'premium_bundle', name: 'Premium Bundle (pack of 4)', qty: ord.premium_bundle_qty, price: 2400 });
+
+                            catMap.forEach((dyn) => {
+                              if (!parsedList.some((it) => it.key === dyn.key)) {
+                                const q = Number(ord[`${dyn.key}_qty`]) || Number(ord[dyn.key]) || 0;
+                                if (q > 0) parsedList.push({ key: dyn.key, name: dyn.name, qty: q, price: dyn.price });
                               }
                             });
-                            Object.entries(stockStatus || {}).forEach(([k, s]) => {
-                              if (!['classic_chocolate_chip', 'double_chocolate', 'chocolate_chip_walnut', 'cookies_cream', 'kunafa_chocolate', 'hazelnut_filled', 'lotus_lava', 'classic_bundle', 'premium_bundle'].includes(k) && !k.endsWith('_bundle')) {
-                                dynMap.set(k, { key: k, name: s.flavor_name || s.name || k, price: Number(s.price) || 600 });
-                              }
-                            });
+                          }
 
-                            const addedKeys = new Set();
-                            dynMap.forEach((dyn) => {
-                              const q = Number(ord[`${dyn.key}_qty`]) || 0;
-                              if (q > 0) {
-                                orderItems.push(`${dyn.name} × ${q} (@ PKR ${dyn.price.toLocaleString()})`);
-                                addedKeys.add(dyn.key);
-                              }
-                            });
+                          const currSub = parsedList.reduce((acc, it) => acc + it.qty * it.price, 0);
+                          const isDel = ord.order_type === 'delivery';
+                          const fee = isDel ? 300 : 0;
+                          const recTot = Math.round(Number(ord.total_amount) || 0);
+                          let diff = (recTot - fee) - currSub;
 
-                            // Reconcile dynamic items for legacy orders if total exceeds standard items sum
-                            let dynSum = 0;
-                            addedKeys.forEach((k) => {
-                              const q = Number(ord[`${k}_qty`]) || 0;
-                              const p = dynMap.get(k)?.price || 0;
-                              dynSum += q * p;
-                            });
+                          if (diff > 0) {
+                            const cands = Array.from(catMap.values())
+                              .filter((c) => c.price > 0 && c.price <= diff)
+                              .map((c) => ({
+                                ...c,
+                                score: (!['classic_chocolate_chip','double_chocolate','chocolate_chip_walnut','cookies_cream','kunafa_chocolate','hazelnut_filled','lotus_lava'].includes(c.key) ? 50 : 0) + (!parsedList.some((it) => it.key === c.key) ? 20 : 0),
+                              }));
+                            cands.sort((a, b) => b.score - a.score || b.price - a.price);
 
-                            const standardSum =
-                              (ord.classic_chocolate_chip_qty || 0) * 580 +
-                              (ord.double_chocolate_qty || 0) * 580 +
-                              (ord.chocolate_chip_walnut_qty || 0) * 580 +
-                              (ord.cookies_cream_qty || 0) * 620 +
-                              (ord.kunafa_chocolate_qty || 0) * 620 +
-                              (ord.hazelnut_filled_qty || 0) * 620 +
-                              (ord.lotus_lava_qty || 0) * 620 +
-                              (ord.classic_bundle_qty || 0) * 2200 +
-                              (ord.premium_bundle_qty || 0) * 2400 +
-                              dynSum;
+                            const solve = (target, candidates) => {
+                              let best = null;
+                              const dfs = (idx, remaining, counts) => {
+                                if (remaining === 0) {
+                                  best = { ...counts };
+                                  return true;
+                                }
+                                if (idx >= candidates.length || remaining < 0) return false;
+                                const cand = candidates[idx];
+                                const maxCan = Math.min(20, Math.floor(remaining / cand.price));
+                                for (let count = maxCan; count >= 0; count--) {
+                                  if (count > 0) counts[cand.key] = count;
+                                  else delete counts[cand.key];
+                                  if (dfs(idx + 1, remaining - count * cand.price, counts)) return true;
+                                }
+                                delete counts[cand.key];
+                                return false;
+                              };
+                              if (dfs(0, target, {})) return best;
+                              return null;
+                            };
 
-                            const isDel = ord.order_type === 'delivery';
-                            const fee = isDel ? 300 : 0;
-                            const expSub = Math.max(0, (parseFloat(ord.total_amount) || 0) - fee);
-                            const diff = expSub - standardSum;
-                            if (diff > 0) {
-                              const notAdded = Array.from(dynMap.values()).filter((d) => !addedKeys.has(d.key));
-                              const exactMatch = notAdded.find((m) => m.price === diff);
-                              if (exactMatch) {
-                                orderItems.push(`${exactMatch.name} × 1 (@ PKR ${exactMatch.price.toLocaleString()})`);
-                              } else {
-                                const multiMatch = notAdded.find((m) => m.price > 0 && diff % m.price === 0);
-                                if (multiMatch) {
-                                  const q = Math.floor(diff / multiMatch.price);
-                                  orderItems.push(`${multiMatch.name} × ${q} (@ PKR ${multiMatch.price.toLocaleString()})`);
+                            let sol = solve(diff, cands);
+                            if (!sol && isDel) {
+                              const altDiff = recTot - currSub;
+                              if (altDiff > 0 && altDiff !== diff) {
+                                const altCands = Array.from(catMap.values()).filter((c) => c.price > 0 && c.price <= altDiff).sort((a, b) => b.price - a.price);
+                                const altSol = solve(altDiff, altCands);
+                                if (altSol) {
+                                  sol = altSol;
+                                  diff = altDiff;
                                 }
                               }
                             }
+
+                            if (sol) {
+                              Object.entries(sol).forEach(([k, q]) => {
+                                if (q > 0) {
+                                  const c = catMap.get(k);
+                                  const existing = parsedList.find((it) => it.key === k);
+                                  if (existing) existing.qty += q;
+                                  else parsedList.push({ key: k, name: c?.name || k, qty: q, price: c?.price || 580 });
+                                }
+                              });
+                            }
                           }
+
+                          parsedList.forEach((it) => {
+                            orderItems.push(`${it.name} × ${it.qty}${it.price > 0 ? ` (@ PKR ${it.price.toLocaleString()})` : ''}`);
+                          });
 
                           return (
                             <div key={ord.id} className={styles.orderCard}>

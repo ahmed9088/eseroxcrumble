@@ -368,8 +368,10 @@ export async function POST(request) {
             : `[ITEMS]:${JSON.stringify(itemsBreakdown)}`,
         };
         insRes = await supabaseAdmin.from('orders').insert({ ...backupData, batch_name: activeBatchName }).select('id').single();
-      }
-      if (insRes.error && insRes.error.message?.includes('batch_name')) {
+        if (insRes.error && insRes.error.message?.includes('batch_name')) {
+          insRes = await supabaseAdmin.from('orders').insert(backupData).select('id').single();
+        }
+      } else if (insRes.error && insRes.error.message?.includes('batch_name')) {
         insRes = await supabaseAdmin.from('orders').insert(orderData).select('id').single();
       }
 
